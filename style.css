@@ -1,0 +1,323 @@
+body {
+    font-family: Tahoma;
+    user-select: none;
+    -webkit-user-select: none;
+    direction: rtl;
+}
+
+.period_cont {
+    margin-bottom: 10px;
+}
+.obj_account {
+    background-color: #d4d4d4;
+    border-radius: 15px;
+    padding: 5px;
+    margin-bottom: 10px;
+}
+.account_title {
+    font-size: 20px;
+    margin: 0 10px 10px 0;
+    font-weight: bold;
+    display: flex;
+}
+.account_title_name {
+    flex-grow: 1;
+}
+
+.obj_table {
+    background: #98c6f6;
+    border-radius: 5px;
+    margin: 0 0 5px 0;
+}
+.table_header {
+    display: flex;
+    margin: 2px 11px 3px 0;
+}
+.table_hdr_field {
+    display: inline-block;
+    margin: 0 3px 0 0;
+}
+.obj_entry {
+    border-radius: 4px;
+    margin: 0 10px 0 0;
+    display: flex;
+}
+.obj_balance_entry {
+    border-radius: 4px;
+    margin: 0 10px 0 25px;
+    display: flex;
+}
+.entry_remove {
+    flex-grow: 0;
+    right: 0;
+    top: 0;    
+    width: 24px;
+    height: 21px;
+    background-image: url(img/gray_ex.png);
+    cursor: auto;
+}
+.entry_remove:hover {
+    background-image: url(img/red_ex.png)
+}
+.entry_balance {
+    flex-basis: 100px;
+    text-align: left;
+    border: 1px solid;
+    margin: 0 0 3px 3px;
+    border-radius: 4px;
+    background: #daf9ff;
+    direction: ltr;
+}
+.obj_val_hdr_balance {
+    flex-basis: 135px;
+}
+.balance_ent_spacer {
+    flex-grow: 1;
+    text-align: left;
+    margin-left: 5px;
+}
+
+.obj_txt_val {
+    display: inline-block;
+    background: #fff;
+    margin: 0 0 3px 3px;
+    border-radius: 4px;
+    position: relative;
+    height: 21px;
+}
+.obj_val_value {
+    padding: 0 5px 0 5px;
+}
+.obj_val_input {
+    visibility: hidden;
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: calc(100% - 10px);
+    margin: 0;
+    border-radius: 6px;
+    border: 0px;
+    padding: 0 5px;
+    outline: none;
+    background-color: #f0f0f0;
+    font-size: 16px;
+    font-family: Tahoma;
+    height: 21px;
+}
+.obj_val_date, .obj_val_hdr_date {
+    flex-grow: 0;
+    flex-basis: 100px;
+}
+.obj_val_amount, .obj_val_hdr_amount {
+    flex-grow: 0;
+    flex-basis: 100px;
+}
+.obj_val_amount {
+    text-align: left;
+    direction: ltr;
+}
+.obj_val_bank_desc, .obj_val_hdr_bank_desc {
+    flex-grow: 0;
+    flex-basis: 200px;
+}
+.obj_val_note, .obj_val_hdr_note {
+    flex-grow: 1;
+}
+.obj_val_init_balance {
+    flex-grow: 0;
+    flex-basis: 110px;
+    text-align: left;
+    direction: ltr;
+}
+
+/* ----------------------------- GUI --------------------------*/
+
+.dlg {
+    display: flex;
+    flex-direction: column;    
+    position: fixed;
+    left: calc( 50% - 300px );
+    border-radius: 10px;
+    background-color: #686868;
+    border: solid #333 2px;
+    box-sizing: border-box;
+    top: 70px;
+    z-index: 100;
+}
+.dlg_title {
+    padding: 2px 7px 6px 7px;
+    height: 21px;
+    line-height: 21px; 
+    cursor: move;
+    overflow: hidden;
+    white-space: nowrap;
+    color: #fff;
+    background-color: #555;    
+    border-radius: 10px 10px 0 0;
+}
+.dlg_title_text {
+    padding-right: 25px; /* room for the close btn */
+}
+.dlg_client {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    white-space: nowrap;
+    margin-top: 2px;
+    flex-grow: 1;
+}
+
+.param_btn {
+    display: inline-block;
+    cursor: pointer;
+    border-radius: 3px;
+    background-image: linear-gradient(to bottom, #808080, #707070);
+    text-align: center;
+    height: 25px;
+    line-height: 24px;
+    color: #fff;
+    margin: 1px 5px 0 3px;;
+    padding: 0 10px 0 10px;
+    min-width: 70px;    
+}
+
+.param_btn:hover {
+    background-image: linear-gradient(to bottom, #909090, #808080);  
+}
+.param_btn:active , .param_checkbox_input:checked+.param_btn {
+    background-image: linear-gradient(to bottom, #9090d0, #8080d0) !important; /* important makes it act on rm_btn */
+}
+
+.dlg_buttons_group {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    margin: 12px 10px 7px 10px;
+}
+
+.dlg_button {
+    background-image: linear-gradient(to bottom, #989898, #848484);
+}
+.dlg_resize_rb {
+    position: absolute;
+    width:35px;
+    height:35px;
+    right:-2px;
+    bottom:-2px;
+    /*background-color:#ff0;*/
+    cursor: nw-resize;
+}
+.dlg_resize_lb {
+    position: absolute;
+    width:35px;
+    height:35px;
+    left:-2px;
+    bottom:-2px;
+    /*background-color:#ff0;*/
+    cursor: ne-resize;
+}
+.dlg_resize_r {
+    position: absolute;
+    width: 7px;
+    height: 100%;
+    right: -2px;
+    top: 0;
+    cursor: w-resize;
+}
+.dlg_resize_l {
+    position: absolute;
+    width: 7px;
+    height: 100%;
+    left: -2px;
+    top: 0;
+    cursor: w-resize;
+}
+.dlg_resize_b {
+    position: absolute;
+    width: 100%;
+    height: 7px;
+    bottom: -2px;
+    cursor: s-resize;
+}
+
+.dlg_text_input {
+    margin: 0 5px;
+    height: 24px;
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 24px;
+    background-color: #555;
+    color: #fff;
+    border: solid 1px #888;
+    padding: 0 5px;
+    flex: 1;
+}
+.dlg_text_input::-webkit-outer-spin-button,
+.dlg_text_input::-webkit-inner-spin-button {
+    -webkit-appearance: none;  /* hide arrows */
+}
+.dlg_text_input[type=number] {
+    -moz-appearance: textfield; /* hide arrows */
+}
+.dlg_text_input:focus {
+    outline: none; /* remove highlight in chrome */
+}
+
+.dlg_save_as > .param_btn {
+    margin: 5px;
+}
+.dlg_input_label {
+    color: #fff;
+    width: 60px;
+    display: inline-block;
+}
+.dlg_input_line {
+    margin: 5px 5px 0 5px;
+}
+
+.dlg_close_btn {
+    position: absolute;
+    right: 0;
+    top: 0;    
+    width: 24px;
+    height: 21px;
+    margin: 2px 3px 0 0;
+    background-image: url(img/gray_ex.png);
+    cursor: auto;
+}
+.dlg_close_btn:hover {
+    background-image: url(img/red_ex.png)
+}
+.dlg_label {
+    /*text-align: center;*/
+    color: #fff;
+    margin: 5px 5px 2px 5px;
+}
+
+.dlg_center {
+}
+.dlg_field_line {
+    color: #fff;
+    display: flex;
+    margin: 5px 5px 0 5px;
+    align-items: center;
+}
+.dlg_field_label {
+}
+
+.stmt_center {
+    width: calc(100% - 15px);
+    height: 100%;
+    margin: 5px;
+}
+.stmt_text {
+    width: 100%;
+    height: 100%;
+    outline: none;
+    font-family: courier;
+    white-space: nowrap;
+}
+.stmt_dlg {
+    width: 600px;
+    height: 600px;
+}

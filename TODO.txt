@@ -1,0 +1,3 @@
+- period selector as tabs
+- accounts should be expanded and contracted
+- new period copies accounts
