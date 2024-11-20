@@ -5,6 +5,7 @@ body {
     direction: rtl;
 }
 
+
 .period_cont {
     margin-bottom: 10px;
 }
@@ -13,6 +14,8 @@ body {
     border-radius: 15px;
     padding: 5px;
     margin-bottom: 10px;
+    max-width: 900px;
+    margin: 0 auto 0 auto;
 }
 .account_title {
     font-size: 20px;
@@ -61,12 +64,11 @@ body {
 }
 .entry_balance {
     flex-basis: 100px;
-    text-align: left;
-    border: 1px solid;
+    /*border: 1px solid;*/
     margin: 0 0 3px 3px;
     border-radius: 4px;
     background: #daf9ff;
-    direction: ltr;
+    
 }
 .obj_val_hdr_balance {
     flex-basis: 135px;
@@ -113,8 +115,6 @@ body {
     flex-basis: 100px;
 }
 .obj_val_amount {
-    text-align: left;
-    direction: ltr;
 }
 .obj_val_bank_desc, .obj_val_hdr_bank_desc {
     flex-grow: 0;
@@ -128,6 +128,51 @@ body {
     flex-basis: 110px;
     text-align: left;
     direction: ltr;
+}
+
+
+.number_label {
+    font-family: courier;
+    font-weight: bold;
+    direction: ltr;
+    text-align: right;
+    padding-top: 2px;
+}
+.number_edit {
+    font-family: courier;
+    font-weight: bold;
+    direction: ltr;
+}
+
+.table_footer {
+    display: flex;
+}
+.table_footer_spacer_1 {
+    flex-basis: 250px;
+}
+.table_footer_spacer_2 {
+    flex-grow: 1;
+}
+.table_footer_tplus {
+    flex-basis: 120px;
+    text-align: left;
+    margin: 0 0 3px 3px;
+    border-radius: 4px;
+    background: #daf9ff;
+    direction: ltr;
+}
+.table_footer_tminus {
+    flex-basis: 120px;
+    margin: 0 0 3px 3px;
+    border-radius: 4px;
+    background: #daf9ff;
+}
+.table_footer_balance {
+    flex-basis: 100px;
+    margin: 0 0 3px 3px;
+    border-radius: 4px;
+    background: #daf9ff;
+    margin-left: 27px;
 }
 
 /* ----------------------------- GUI --------------------------*/

@@ -131,6 +131,17 @@ class Period extends Obj
     }
 }
 
+class Balances {
+    constructor(balance, plus, minus) {
+        this.balance = balance
+        this.plus = plus
+        this.minus = minus
+    }
+    clone() {
+        return new Balances(this.balance, this.plus, this.minus)
+    }
+}
+
 class Account extends Obj
 {
     constructor(ctx, name) {
@@ -171,7 +182,7 @@ class Account extends Obj
         this.table.show(table_wrap)
         add_push_btn(this.elem, "Add Entry...", ()=>{
             this.table.add_empty_entry()
-            a.trigger_balance()
+            this.trigger_balance()
         })
         add_push_btn(this.elem, "Paste Statement...", ()=>{
             dlg_statement(body, this)
@@ -182,7 +193,7 @@ class Account extends Obj
         })
     }
     trigger_balance() {
-        this.table.update_balance(this.initial_balance.amount.value)
+        this.table.update_balance(new Balances(this.initial_balance.amount.value, 0, 0))
     }
 } 
 
@@ -192,7 +203,9 @@ class Table extends Obj
         super(ctx)
         this.entries = []
         this.is_top_level = (this.ctx.constructor == Account)
+        this.last_balances = null
         this.elem = null
+        this.footer_elems = null
     }
     static from_json(ctx, j) {
         const t = new Table(ctx)
@@ -221,22 +234,37 @@ class Table extends Obj
         for(const f of Entry.FIELDS)
             add_div(header, ["table_hdr_field", "obj_val_hdr_" + f.name]).innerText = f.disp
         
-        if (this.is_top_level) {
+        if (this.is_top_level) 
             this.ctx.initial_balance.show(this.elem)
-        }
+
         for(const e of this.entries)
             e.show(this.elem)
+
+        if (this.is_top_level)
+            this.show_footer(this.elem)
+    }
+
+    show_footer(parent) {
+        const footer = add_div(parent, "table_footer")
+        const sp1 = add_div(footer, "table_footer_spacer_1")
+        const total_plus = add_div(footer, ["obj_val_value", "table_footer_tplus", "number_label"])
+        const total_minus = add_div(footer, ["obj_val_value", "table_footer_tminus", "number_label"])
+        const sp2 = add_div(footer, "table_footer_spacer_2")
+        const balance = add_div(footer, ["obj_val_value", "table_footer_balance", "number_label"])
+        this.footer_elems = { total_plus:total_plus, total_minus:total_minus, balance:balance }
+        this.update_footer()
     }
 
     add_empty_entry() {
-        this._add_entry(new Entry("ריק", "0", "ריק", "")) 
+        this.add_entry(new Entry(null, null, 0, "ריק", "")) 
     }
-    add_entry(entry) { // to the end
+    add_entry(entry, need_save=true) { // to the end
         entry.ctx = this
         this.entries.push(entry)
         if (this.elem !== null)
             entry.show(this.elem)
-        save_db()
+        if (need_save)
+            save_db()
     }
     remove_entry(entry) {
         const idx = this.entries.indexOf(entry)
@@ -244,10 +272,18 @@ class Table extends Obj
         this.elem.removeChild(entry.elem)
         save_db()
     }
-    update_balance(balance) {
+    update_footer() {
+        if (!this.footer_elems)
+            return
+        this.footer_elems.balance.innerText = roundAmount(this.last_balances.balance)
+        this.footer_elems.total_plus.innerText = roundAmount(this.last_balances.plus)
+        this.footer_elems.total_minus.innerText = roundAmount(this.last_balances.minus)
+    }
+    update_balance(b) {
         for(const e of this.entries)
-            balance = e.update_balance(balance)
-        return balance
+            e.update_balance(b)
+        this.last_balances = b.clone()
+        this.update_footer()
     }
 }
 
@@ -336,18 +372,23 @@ class Entry extends Obj
         for(const f of this.fields) {
             f.show(this.elem)
         }
-        this.balance_elem = add_div(this.elem, ["obj_val_value", "entry_balance"])
+        this.balance_elem = add_div(this.elem, ["obj_val_value", "entry_balance", "number_label"])
         this.balance_elem.innerText = roundAmount(this.balance)
         const remove_btn = add_div(this.elem, "entry_remove")
         remove_btn.addEventListener("click", ()=>{
             this.ctx.remove_entry(this)
         })
     }
-    update_balance(balance) { // update_balance go down the tree
-        this.balance = balance + this.amount.value
+    update_balance(b) { // update_balance go down the tree
+        const v = this.amount.value
+        this.balance = b.balance + v
         if (this.balance_elem)
             this.balance_elem.innerText = roundAmount(this.balance)
-        return this.balance 
+        b.balance = this.balance
+        if (v > 0)
+            b.plus += v
+        else
+            b.minus += v
     }
     trigger_balance() { // trigger_balance go up the tree
         if (this.ctx.is_top_level) {
@@ -421,12 +462,16 @@ class EntryNumValue extends EntryTextValue {
         else
             this.value = parseFloat(v)
     }
+    show(parent) {
+        super.show(parent)
+        this.value_elem.classList.add("number_label")
+        this.input_elem.classList.add("number_edit")
+    }
 }
 
 class EntryDateValue extends EntryTextValue {
     constructor(ctx, name, value) {
-        super(ctx, name, value)
-        console.assert(value === null || ((value instanceof Date) && !isNaN(value)))
+        super(ctx, name, parseDate(value))
     }
     from_string(v) {
         this.value = parseDate(v)
@@ -609,11 +654,12 @@ class ParserLeumiHtml {
         entries.reverse() // it comes newest first
         const was_empty = this.account.table.size() == 0
         for(const e of entries)
-            this.account.table.add_entry(e)
+            this.account.table.add_entry(e, false)
         if (was_empty) {
             const first_entry = entries[0]
             this.account.initial_balance.amount.load_value(first_entry.balance - first_entry.amount.value)
         }
+        save_db()
         this.account.trigger_balance()
     }
 }
