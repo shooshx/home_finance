@@ -51,7 +51,7 @@ function checkParseInt(s) {
     return v
 }
 function roundAmount(n) {
-    return Math.round(n * 100)/100
+    return (Math.round(n * 100)/100).toFixed(2)
 }
 
 class Obj
@@ -180,17 +180,6 @@ class Account extends Obj
         // needed so that table can recreate itself by deleting it's elem
         const table_wrap = add_div(this.elem)
         this.table.show(table_wrap)
-        add_push_btn(this.elem, "Add Entry...", ()=>{
-            this.table.add_empty_entry()
-            this.trigger_balance()
-        })
-        add_push_btn(this.elem, "Paste Statement...", ()=>{
-            dlg_statement(body, this)
-        })
-        add_push_btn(this.elem, "Clear", ()=>{
-            this.table.clear()
-            this.table.show(table_wrap)
-        })
     }
     trigger_balance() {
         this.table.update_balance(new Balances(this.initial_balance.amount.value, 0, 0))
@@ -206,6 +195,7 @@ class Table extends Obj
         this.last_balances = null
         this.elem = null
         this.footer_elems = null
+        this.entries_cont_elem = null
     }
     static from_json(ctx, j) {
         const t = new Table(ctx)
@@ -227,21 +217,43 @@ class Table extends Obj
     show(parent) {
         if (this.elem !== null) {
             parent.appendChild(this.elem)
+            this.elem.classList.remove("hidden")
             return
         }
         this.elem = add_div(parent, "obj_table")
-        const header = add_div(this.elem, "table_header")
-        for(const f of Entry.FIELDS)
-            add_div(header, ["table_hdr_field", "obj_val_hdr_" + f.name]).innerText = f.disp
-        
+        if (!this.is_top_level)
+            this.elem.classList.add("sub_table")
+        else {
+            const header = add_div(this.elem, "table_header")
+            for(const f of Entry.FIELDS)
+                add_div(header, ["table_hdr_field", "obj_val_hdr_" + f.name]).innerText = f.disp
+        } 
         if (this.is_top_level) 
             this.ctx.initial_balance.show(this.elem)
 
+        this.entries_cont_elem = add_div(this.elem, "table_entries")
         for(const e of this.entries)
-            e.show(this.elem)
+            e.show(this.entries_cont_elem)
 
         if (this.is_top_level)
             this.show_footer(this.elem)
+
+        add_push_btn(this.elem, "Add Entry...", ()=>{
+            this.add_empty_entry()
+            this.trigger_balance()
+        })
+        add_push_btn(this.elem, "Paste Statement...", ()=>{
+            dlg_statement(body, this)
+        })
+        add_push_btn(this.elem, "Clear", ()=>{
+            this.clear()
+            this.show(parent)
+        })
+    }
+    hide() {
+        if (this.elem === null)
+            return
+        this.elem.classList.add("hidden")
     }
 
     show_footer(parent) {
@@ -262,14 +274,14 @@ class Table extends Obj
         entry.ctx = this
         this.entries.push(entry)
         if (this.elem !== null)
-            entry.show(this.elem)
+            entry.show(this.entries_cont_elem)
         if (need_save)
             save_db()
     }
     remove_entry(entry) {
         const idx = this.entries.indexOf(entry)
         this.entries.splice(idx, 1)
-        this.elem.removeChild(entry.elem)
+        entry.elem.parentElement.removeChild(entry.elem)
         save_db()
     }
     update_footer() {
@@ -278,6 +290,9 @@ class Table extends Obj
         this.footer_elems.balance.innerText = roundAmount(this.last_balances.balance)
         this.footer_elems.total_plus.innerText = roundAmount(this.last_balances.plus)
         this.footer_elems.total_minus.innerText = roundAmount(this.last_balances.minus)
+    }
+    trigger_balance() {
+        this.ctx.trigger_balance()
     }
     update_balance(b) {
         for(const e of this.entries)
@@ -368,17 +383,49 @@ class Entry extends Obj
             parent.appendChild(this.elem)
             return
         }
-        this.elem = add_div(parent, "obj_entry")
-        for(const f of this.fields) {
-            f.show(this.elem)
+        let line_elem;
+        if (this.ctx.is_top_level) 
+        {
+            this.elem = add_div(parent, "obj_entry_cont")
+            line_elem = add_div(this.elem, "obj_entry")
+            const expand_btn = add_div(line_elem, "entry_expand")
+            expand_btn.addEventListener("click", ()=>{
+                this.show_expanded_breakdown(expand_btn)
+            })
+            if (this.breakdown !== null && this.breakdown.size() > 0) {
+                this.breakdown.show(this.elem)
+                expand_btn.setAttribute("checked", true)
+            }
+        } 
+        else {
+            line_elem = this.elem = add_div(parent, "obj_entry")
         }
-        this.balance_elem = add_div(this.elem, ["obj_val_value", "entry_balance", "number_label"])
+        
+        for(const f of this.fields) {
+            f.show(line_elem)
+        }
+        this.balance_elem = add_div(line_elem, ["obj_val_value", "entry_balance", "number_label"])
         this.balance_elem.innerText = roundAmount(this.balance)
-        const remove_btn = add_div(this.elem, "entry_remove")
+        const remove_btn = add_div(line_elem, "entry_remove")
         remove_btn.addEventListener("click", ()=>{
             this.ctx.remove_entry(this)
+            this.trigger_balance()
         })
     }
+    show_expanded_breakdown(expand_btn) {
+        if (this.breakdown === null) {
+            this.breakdown = new Table(this)
+        }
+        if (expand_btn.getAttribute("checked") === null) {
+            this.breakdown.show(this.elem)
+            expand_btn.setAttribute("checked", true)
+        }
+        else {
+            this.breakdown.hide()
+            expand_btn.removeAttribute("checked")
+        }
+    }
+
     update_balance(b) { // update_balance go down the tree
         const v = this.amount.value
         this.balance = b.balance + v
@@ -393,7 +440,7 @@ class Entry extends Obj
     trigger_balance() { // trigger_balance go up the tree
         if (this.ctx.is_top_level) {
             // if we're an entry in a top-level table, go to the account and update balance
-            this.ctx.ctx.trigger_balance()
+            this.ctx.trigger_balance()
         }
     }
 }
@@ -461,6 +508,9 @@ class EntryNumValue extends EntryTextValue {
             this.value = 0
         else
             this.value = parseFloat(v)
+    }
+    to_string() {
+        return roundAmount(this.value)
     }
     show(parent) {
         super.show(parent)

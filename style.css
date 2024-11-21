@@ -4,7 +4,9 @@ body {
     -webkit-user-select: none;
     direction: rtl;
 }
-
+.hidden {
+    display: none;
+}
 
 .period_cont {
     margin-bottom: 10px;
@@ -29,8 +31,14 @@ body {
 
 .obj_table {
     background: #98c6f6;
-    border-radius: 5px;
+    border-radius: 8px;
     margin: 0 0 5px 0;
+    padding-bottom: 8px;
+}
+.sub_table {
+    background: #4ba1ff;
+    margin-right: 50px;
+    padding: 5px 0 5px 0;
 }
 .table_header {
     display: flex;
@@ -62,6 +70,18 @@ body {
 .entry_remove:hover {
     background-image: url(img/red_ex.png)
 }
+.entry_expand {
+    flex-grow: 0;
+    right: 0;
+    top: 0;    
+    width: 24px;
+    height: 21px;
+    content: "[+]";
+}
+.entry_expand[checked] {
+    content: "[-]";
+}
+
 .entry_balance {
     flex-basis: 100px;
     /*border: 1px solid;*/
@@ -148,31 +168,32 @@ body {
     display: flex;
 }
 .table_footer_spacer_1 {
-    flex-basis: 250px;
+    flex-basis: 230px;
 }
 .table_footer_spacer_2 {
     flex-grow: 1;
 }
 .table_footer_tplus {
     flex-basis: 120px;
-    text-align: left;
     margin: 0 0 3px 3px;
     border-radius: 4px;
-    background: #daf9ff;
-    direction: ltr;
+    background: #91ff90;
+    border: 1px solid #555;
 }
 .table_footer_tminus {
     flex-basis: 120px;
     margin: 0 0 3px 3px;
     border-radius: 4px;
-    background: #daf9ff;
+    background: #ffb3b3;
+    border: 1px solid #555;
 }
 .table_footer_balance {
     flex-basis: 100px;
     margin: 0 0 3px 3px;
     border-radius: 4px;
-    background: #daf9ff;
+    background: #89f3ff;
     margin-left: 27px;
+    border: 1px solid #555;
 }
 
 /* ----------------------------- GUI --------------------------*/
