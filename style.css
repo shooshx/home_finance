@@ -7,6 +7,9 @@ body {
 .hidden {
     display: none;
 }
+.dir_ltr {
+    direction: ltr;
+}
 
 .period_cont {
     margin-bottom: 10px;
@@ -38,6 +41,7 @@ body {
 .sub_table {
     background: #4ba1ff;
     margin-right: 50px;
+    margin-left: 30px;
     padding: 5px 0 5px 0;
 }
 .table_header {
@@ -72,15 +76,19 @@ body {
 }
 .entry_expand {
     flex-grow: 0;
-    right: 0;
-    top: 0;    
-    width: 24px;
-    height: 21px;
-    content: "[+]";
+    width: 18px;
+    height: 18px;
+    background-image: url(img/gray_plus.png);
+    background-repeat: no-repeat;
+    margin: 0 0 0 5px;
+}
+.entry_expand[has_breakdown] {
+    background-image: url(img/blue_plus.png);
 }
 .entry_expand[checked] {
-    content: "[-]";
+    background-image: url(img/gray_minus.png);
 }
+
 
 .entry_balance {
     flex-basis: 100px;
@@ -109,6 +117,9 @@ body {
 }
 .obj_val_value {
     padding: 0 5px 0 5px;
+    white-space: nowrap;
+    overflow: hidden;
+    min-height: 19px;
 }
 .obj_val_input {
     visibility: hidden;
@@ -139,6 +150,7 @@ body {
 .obj_val_bank_desc, .obj_val_hdr_bank_desc {
     flex-grow: 0;
     flex-basis: 200px;
+    max-width: 200px;
 }
 .obj_val_note, .obj_val_hdr_note {
     flex-grow: 1;
@@ -195,6 +207,16 @@ body {
     margin-left: 27px;
     border: 1px solid #555;
 }
+.table_btns {
+    display: flex;
+}
+.table_btn {
+    flex-grow: 0;
+}
+.table_btns_spacer {
+    flex-grow: 1;
+}
+
 
 /* ----------------------------- GUI --------------------------*/
 

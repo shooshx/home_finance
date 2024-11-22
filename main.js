@@ -192,7 +192,7 @@ class Table extends Obj
         super(ctx)
         this.entries = []
         this.is_top_level = (this.ctx.constructor == Account)
-        this.last_balances = null
+        this.last_balances = new Balances(0, 0, 0)
         this.elem = null
         this.footer_elems = null
         this.entries_cont_elem = null
@@ -213,6 +213,8 @@ class Table extends Obj
         this.entries = []
         this.invalidate()
         save_db()
+        this.entry_count_changed()
+        this.update_balance()
     }
     show(parent) {
         if (this.elem !== null) {
@@ -235,20 +237,8 @@ class Table extends Obj
         for(const e of this.entries)
             e.show(this.entries_cont_elem)
 
-        if (this.is_top_level)
-            this.show_footer(this.elem)
+        this.show_footer(this.elem, parent)
 
-        add_push_btn(this.elem, "Add Entry...", ()=>{
-            this.add_empty_entry()
-            this.trigger_balance()
-        })
-        add_push_btn(this.elem, "Paste Statement...", ()=>{
-            dlg_statement(body, this)
-        })
-        add_push_btn(this.elem, "Clear", ()=>{
-            this.clear()
-            this.show(parent)
-        })
     }
     hide() {
         if (this.elem === null)
@@ -256,16 +246,38 @@ class Table extends Obj
         this.elem.classList.add("hidden")
     }
 
-    show_footer(parent) {
-        const footer = add_div(parent, "table_footer")
-        const sp1 = add_div(footer, "table_footer_spacer_1")
-        const total_plus = add_div(footer, ["obj_val_value", "table_footer_tplus", "number_label"])
-        const total_minus = add_div(footer, ["obj_val_value", "table_footer_tminus", "number_label"])
-        const sp2 = add_div(footer, "table_footer_spacer_2")
-        const balance = add_div(footer, ["obj_val_value", "table_footer_balance", "number_label"])
-        this.footer_elems = { total_plus:total_plus, total_minus:total_minus, balance:balance }
+    show_footer(parent, table_parent) {
+        if (this.is_top_level) {
+            const footer = add_div(parent, "table_footer")
+            const sp1 = add_div(footer, "table_footer_spacer_1")
+            const total_plus = add_div(footer, ["obj_val_value", "table_footer_tplus", "number_label"])
+            const total_minus = add_div(footer, ["obj_val_value", "table_footer_tminus", "number_label"])
+            const sp2 = add_div(footer, "table_footer_spacer_2")
+            const balance = add_div(footer, ["obj_val_value", "table_footer_balance", "number_label"])
+            this.footer_elems = { total_plus:total_plus, total_minus:total_minus, balance:balance }
+        }
+
+        const btns_line = add_div(parent, "table_btns")
+        add_push_btn(btns_line, "Add Entry...", ()=>{
+            this.add_empty_entry()
+            this.trigger_balance()
+        }, "table_btn")
+        add_push_btn(btns_line, "Paste Statement...", ()=>{
+            dlg_statement(body, this)
+        }, "table_btn")
+        add_push_btn(btns_line, "Clear", ()=>{
+            this.clear()
+            this.show(table_parent)
+        }, "table_btn")
+
+        if (!this.is_top_level) { // add the balance in the btn line
+            const sp = add_div(btns_line, "table_btns_spacer")
+            const balance = add_div(btns_line, ["obj_val_value", "table_footer_balance", "number_label"])
+            this.footer_elems = { balance:balance }
+        }
         this.update_footer()
     }
+
 
     add_empty_entry() {
         this.add_entry(new Entry(null, null, 0, "ריק", "")) 
@@ -277,24 +289,43 @@ class Table extends Obj
             entry.show(this.entries_cont_elem)
         if (need_save)
             save_db()
+        this.entry_count_changed()
     }
     remove_entry(entry) {
         const idx = this.entries.indexOf(entry)
         this.entries.splice(idx, 1)
         entry.elem.parentElement.removeChild(entry.elem)
         save_db()
+        this.entry_count_changed()
+    }
+    entry_count_changed() {
+        if (this.ctx.constructor === Entry)
+            this.ctx.update_has_breakdown()
     }
     update_footer() {
         if (!this.footer_elems)
             return
         this.footer_elems.balance.innerText = roundAmount(this.last_balances.balance)
-        this.footer_elems.total_plus.innerText = roundAmount(this.last_balances.plus)
-        this.footer_elems.total_minus.innerText = roundAmount(this.last_balances.minus)
+        if (this.is_top_level) {
+            this.footer_elems.total_plus.innerText = roundAmount(this.last_balances.plus)
+            this.footer_elems.total_minus.innerText = roundAmount(this.last_balances.minus)
+        }
     }
     trigger_balance() {
-        this.ctx.trigger_balance()
+        if (this.is_top_level)
+            this.ctx.trigger_balance()
+        else {
+            // in a sub-table, we are the top level
+            this.update_balance()
+        }
     }
-    update_balance(b) {
+    update_balance(b = null) {
+        if (this.is_top_level)
+            console.assert(b !== null)
+        else {
+            console.assert(b === null)
+            b = new Balances(0, 0, 0)
+        }
         for(const e of this.entries)
             e.update_balance(b)
         this.last_balances = b.clone()
@@ -347,7 +378,7 @@ class Entry extends Obj
         this.amount = new EntryNumValue(this, "amount", amount_v)
         this.amount.change_cb = ()=>{ this.trigger_balance() }
         this.category = null
-        this.bank_desc = new EntryTextValue(this, "bank_desc", bank_desc_v)
+        this.bank_desc = new EntryBidiTextValue(this, "bank_desc", bank_desc_v)
         this.note = new EntryTextValue(this, "note", note_v)
         this.breakdown = null // optional Table
         this.balance = 0 // balance after this transaction
@@ -355,6 +386,7 @@ class Entry extends Obj
         this.fields = [this.date, this.bank_desc, this.amount, this.note]
         this.elem = null
         this.balance_elem = null
+        this.expand_btn = null
     }
 
     static from_json(ctx, j) {
@@ -388,14 +420,15 @@ class Entry extends Obj
         {
             this.elem = add_div(parent, "obj_entry_cont")
             line_elem = add_div(this.elem, "obj_entry")
-            const expand_btn = add_div(line_elem, "entry_expand")
-            expand_btn.addEventListener("click", ()=>{
-                this.show_expanded_breakdown(expand_btn)
+            this.expand_btn = add_div(line_elem, "entry_expand")
+            this.expand_btn.addEventListener("click", ()=>{
+                this.show_expanded_breakdown()
             })
             if (this.breakdown !== null && this.breakdown.size() > 0) {
                 this.breakdown.show(this.elem)
-                expand_btn.setAttribute("checked", true)
+                this.expand_btn.setAttribute("checked", true)
             }
+            this.update_has_breakdown()
         } 
         else {
             line_elem = this.elem = add_div(parent, "obj_entry")
@@ -404,26 +437,34 @@ class Entry extends Obj
         for(const f of this.fields) {
             f.show(line_elem)
         }
-        this.balance_elem = add_div(line_elem, ["obj_val_value", "entry_balance", "number_label"])
-        this.balance_elem.innerText = roundAmount(this.balance)
+        if (this.ctx.is_top_level) {
+            this.balance_elem = add_div(line_elem, ["obj_val_value", "entry_balance", "number_label"])
+            this.balance_elem.innerText = roundAmount(this.balance)
+        }
         const remove_btn = add_div(line_elem, "entry_remove")
         remove_btn.addEventListener("click", ()=>{
             this.ctx.remove_entry(this)
             this.trigger_balance()
         })
     }
-    show_expanded_breakdown(expand_btn) {
+    show_expanded_breakdown() {
         if (this.breakdown === null) {
             this.breakdown = new Table(this)
         }
-        if (expand_btn.getAttribute("checked") === null) {
+        if (this.expand_btn.getAttribute("checked") === null) {
             this.breakdown.show(this.elem)
-            expand_btn.setAttribute("checked", true)
+            this.expand_btn.setAttribute("checked", true)
         }
         else {
             this.breakdown.hide()
-            expand_btn.removeAttribute("checked")
+            this.expand_btn.removeAttribute("checked")
         }
+    }
+    update_has_breakdown() {
+        if (this.breakdown !== null && this.breakdown.size() > 0)
+            this.expand_btn.setAttribute("has_breakdown", true)
+        else
+            this.expand_btn.removeAttribute("has_breakdown")
     }
 
     update_balance(b) { // update_balance go down the tree
@@ -436,12 +477,11 @@ class Entry extends Obj
             b.plus += v
         else
             b.minus += v
+        if (this.breakdown !== null)
+            this.breakdown.trigger_balance() // start a "from the top" on the sub table
     }
     trigger_balance() { // trigger_balance go up the tree
-        if (this.ctx.is_top_level) {
-            // if we're an entry in a top-level table, go to the account and update balance
-            this.ctx.trigger_balance()
-        }
+        this.ctx.trigger_balance()
     }
 }
 
@@ -461,13 +501,16 @@ class EntryTextValue extends Obj
         this.value = roundAmount(v)
         const s = this.to_string(this.value)
         this.input_elem.value = s
-        this.value_elem.innerText = s
+        this.set_value_elem(s)
     }
     from_string(v) {
         this.value = v
     }
     to_string() {
         return this.value
+    }
+    set_value_elem(v) {
+        this.value_elem.innerText = v
     }
     show(parent) {
         if (this.elem !== null) {
@@ -477,7 +520,7 @@ class EntryTextValue extends Obj
         this.elem = add_div(parent, ["obj_txt_val", "obj_val_" + this.name])
         this.value_elem = add_div(this.elem, "obj_val_value")
         const value_s = this.to_string(this.value)
-        this.value_elem.innerText = value_s
+        this.set_value_elem(value_s)
         this.input_elem = add_elem(this.elem, "input", ["obj_val_input", "obj_val_" + this.name])
         this.input_elem.type = "text"
         this.input_elem.spellcheck = false
@@ -488,7 +531,7 @@ class EntryTextValue extends Obj
         })
         this.input_elem.addEventListener("input", ()=>{
             this.from_string(this.input_elem.value)
-            this.value_elem.innerText = this.to_string(this.value)
+            this.set_value_elem(this.to_string(this.value))
             if (this.change_cb)
                 this.change_cb(this.value)
             save_db()
@@ -533,12 +576,38 @@ class EntryDateValue extends EntryTextValue {
     }
 }
 
-function parseDate(s) {
+class EntryBidiTextValue extends EntryTextValue {
+    set_value_elem(v) {
+        this.value_elem.innerText = v
+        if (all_english(v))
+            this.value_elem.classList.add("dir_ltr")
+        else
+            this.value_elem.classList.remove("dir_ltr")
+    }
+}
+
+function all_english(s) {
+    let has_eng = false
+    let has_non_eng = false
+    for(let i = 0; i < s.length; ++i) {
+        const c = s.charAt(i)
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
+            has_eng = true
+            continue
+        }
+        const cc = s.charCodeAt(i)
+        if (cc > 0xff)
+            has_non_eng = true
+    }
+    return has_eng && !has_non_eng
+}
+
+function parseDate(s, sep="/") {
     if (s === null)
         return null
     if (s instanceof Date)
         return s
-    const date_sp = s.split("/")
+    const date_sp = s.split(sep)
     if (date_sp.length != 3)
         return null
     try {
@@ -552,8 +621,23 @@ function parseDate(s) {
     }
 }
 
+function parseLeumiDate(date_s) {
+    const date_sp = date_s.split("/")
+    try {
+        if (date_sp.length != 3)
+            throw new Error("Unexpected date format " + date)
+        const day = checkParseInt(date_sp[0])
+        const monthIndex = checkParseInt(date_sp[1]) - 1
+        const year = checkParseInt(date_sp[2]) + 2000
+        const date = new Date(year, monthIndex, day)
+    }
+    catch(err) {
+        return null
+    }
+}
 
-function dlg_statement(parent, account)
+
+function dlg_statement(parent, table)
 {
     const rect = {visible:true}
     const close_action = ()=> { parent.removeChild(dlg.elem)}
@@ -586,7 +670,7 @@ function dlg_statement(parent, account)
             const in_txt = rdev.target.result;
             for(const p_cls of g_parser_clss)
                 if (p_cls.identify(in_txt))
-                    parser = new p_cls(account)
+                    parser = new p_cls(table)
             if (parser === null) {
                 console.error("Did not identify file")
                 return
@@ -600,9 +684,42 @@ function dlg_statement(parent, account)
     })
 }
 
-class ParserLeumiHtml {
-    constructor(account) {
-        this.account = account
+class ParserBase {
+    constructor(table) {
+        this.table = table
+    }
+    add_entries(txt, reverse) {
+        const lines = txt.split("\n")
+        const entries = []
+        for(const line of lines) {
+            try {
+                const e = this.parse_line(line)
+                if (e)
+                    entries.push(e)
+            }
+            catch(err) {
+                console.error(err)
+            }
+        }
+        if (entries.length == 0)
+            return
+        if (reverse)
+            entries.reverse() // it comes newest first
+        const was_empty = this.table.size() == 0
+        for(const e of entries)
+            this.table.add_entry(e, false)
+        if (was_empty && this.table.is_top_level) {
+            const first_entry = entries[0]
+            this.table.ctx.initial_balance.amount.load_value(first_entry.balance - first_entry.amount.value)
+        }
+        save_db()
+        this.table.trigger_balance()
+    }
+}
+
+class ParserLeumiHtml extends ParserBase {
+    constructor(table) {
+        super(table)
     }
     static identify(txt) {
         return txt.startsWith("<html") && txt.includes("leumi")
@@ -662,14 +779,7 @@ class ParserLeumiHtml {
         const cells = line.split("|")
         if (cells.length < 7 || cells[0].length == 0 || isNaN(cells[0].charAt(0)))
             return null // title line
-        const date_s = cells[0]
-        const date_sp = date_s.split("/")
-        if (date_sp.length != 3)
-            throw new Error("Unexpected date format " + date)
-        const day = checkParseInt(date_sp[0])
-        const monthIndex = checkParseInt(date_sp[1]) - 1
-        const year = checkParseInt(date_sp[2]) + 2000
-        const date = new Date(year, monthIndex, day)
+        const date = parseLeumiDate(cells[0])
         const bank_desc = cells[2]
         const minus_amount = checkParseAmount(cells[4])
         const plus_amount = checkParseAmount(cells[5])
@@ -685,36 +795,75 @@ class ParserLeumiHtml {
         e.balance = balance 
         return e
     }
-
     add_entries(txt) {
-        const lines = txt.split("\n")
-        const entries = []
-        for(const line of lines) {
-            try {
-                const e = this.parse_line(line)
-                if (e)
-                    entries.push(e)
-            }
-            catch(err) {
-                console.error(err)
-            }
-        }
-        if (entries.length == 0)
-            return
-        entries.reverse() // it comes newest first
-        const was_empty = this.account.table.size() == 0
-        for(const e of entries)
-            this.account.table.add_entry(e, false)
-        if (was_empty) {
-            const first_entry = entries[0]
-            this.account.initial_balance.amount.load_value(first_entry.balance - first_entry.amount.value)
-        }
-        save_db()
-        this.account.trigger_balance()
+        super.add_entries(txt, true)
     }
 }
 
-const g_parser_clss = [ParserLeumiHtml]
+class ParserMaxSheet extends ParserBase
+{
+    constructor(table) {
+        super(table)
+        this.card_num = null
+    }
+    static identify(txt) {
+        return txt.startsWith("<?xml") && txt.includes("spreadsheetml")
+    }
+    parse_stmt_file(in_txt)
+    {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(in_txt, "text/xml");
+        let s_txt = ""
+        let added_text = false
+        const rec_parse = (node)=>{
+            if (node.nodeType == Node.ELEMENT_NODE) {
+                if (node.tagName == "row") {
+                    s_txt += "\n"
+                    added_text = false
+                }
+                for(const ch of node.childNodes)
+                    rec_parse(ch)
+            }
+            else if (node.nodeType == Node.TEXT_NODE) {
+                if (added_text)
+                    s_txt += "|"
+                s_txt += node.nodeValue
+                added_text = true
+            }
+        }
+        rec_parse(doc.documentElement);
+        return s_txt
+    }
+
+    parse_line(line) {
+        const cells = line.split("|")
+        if (cells.length < 10 || isNaN(cells[0].charAt(0)))
+            return null
+        const date = parseDate(cells[0], "-")
+        const bank_desc = cells[1]
+        const card_num = cells[3]
+        if (this.card_num === null)
+            this.card_num = card_num
+        else if (this.card_num != card_num)
+            throw new Error("Wrong card " + this.card_num + ", " + card_num)
+        const amount_s = cells[5]
+        const amount = checkParseAmount(amount_s)
+        const total_amount_s = cells[7]
+        let note = ""
+        if (cells.length > 10)
+            note = cells[10]
+        if (amount_s != total_amount_s)
+            note += "(" + total_amount_s + ")"
+        const e = new Entry(null, date, amount, bank_desc, note)
+        return e
+    }
+
+    add_entries(txt) {
+        super.add_entries(txt, false)
+    }
+}
+
+const g_parser_clss = [ParserLeumiHtml, ParserMaxSheet]
 
 
 function selected_period() {

@@ -30,8 +30,12 @@ function add_span(parent, cls) {
 function add_push_btn(parent, label, onclick, cls=null) {
     if (cls === null)
         cls = "param_btn"
-    else
-        cls = cls.concat(["param_btn"])
+    else {
+        if (Array.isArray(cls))
+            cls = cls.concat(["param_btn"])
+        else
+            cls = [cls, "param_btn"]
+    }
     let btn = add_div(parent, cls)
     btn.innerText = label
     btn.addEventListener("click", onclick)
