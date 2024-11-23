@@ -3,7 +3,7 @@
 
 
 let g_db = null
-let g_periods_elem = null
+
 let g_accounts_elem = null
 
 function save_db() {
@@ -81,6 +81,8 @@ class Database extends Obj
         super(ctx)
         this.periods = []
         this.selected_period_idx = 0
+
+        this.elem = null
     }
     static from_json(ctx, j) {
         const db = new Database(ctx)
@@ -92,16 +94,65 @@ class Database extends Obj
     to_json() {
         return { periods: arr_to_json(this.periods), selected_period_idx: this.selected_period_idx }
     }
+
+    selected_period() {
+        return this.periods[this.selected_period_idx]
+    }
+    set_selected(p) {
+        this.selected_period().side_btn_elems.selector.classList.remove("selected_period")
+        const idx = this.periods.indexOf(p)
+        this.selected_period_idx = idx
+        this.selected_period().side_btn_elems.selector.classList.add("selected_period")
+        this.show_selected_period()
+    }
+
+    show_selected_period()
+    {
+        g_accounts_elem.innerText = ""
+        const period = this.selected_period()
+        period.show(g_accounts_elem)
+    }
+
+    show(parent) 
+    {
+        this.elem = add_div(parent, "period_cont")
+        const p_btns = add_div(this.elem, "period_btns")
+        for(const p of this.periods) {
+            this.show_period_btn(p_btns, p)
+        }
+        this.set_selected(this.selected_period())
+        add_push_btn(this.elem, "Add Period", ()=>{
+            const p = new Period(this, "אין שם")
+            this.periods.push(p)
+            this.show_period_btn(p_btns, p)
+            this.set_selected(p)
+            save_db()
+        })
+    }
+
+    show_period_btn(parent, period) {
+        const ps = add_div(parent, 'period_selector')
+        const label = add_div(ps, "sel_btn_prname")
+        label.innerText = period.name.value
+        ps.addEventListener("click", ()=>{
+            this.set_selected(period)
+            save_db()
+        })
+        period.side_btn_elems = { selector: ps, label:label }
+    }
 }
 
 class Period extends Obj
 {
     constructor(ctx, name) {
         super(ctx)
-        this.name = name
+        // shown in Database.show()
+        this.name = new EntryTextValue(this, "prname", name)
+        this.name.change_cb = (v)=>{ this.side_btn_elems.label.innerText = v }
         this.accounts = []
         this.elem = null
         this.accounts_elem = null
+        this.side_btn_elems = null
     }
     static from_json(ctx, j) {
         const p  = new Period(ctx, j.name)
@@ -109,13 +160,15 @@ class Period extends Obj
         return p
     }
     to_json() {
-        return { name: this.name, accounts: arr_to_json(this.accounts) }
+        return { name: this.name.value, accounts: arr_to_json(this.accounts) }
     }
     show(parent) {
         if (this.elem !== null) {
             parent.appendChild(this.elem)
             return
         }
+        const title = add_div(parent, "period_title")
+        this.name.show(title)
         this.accounts_elem = add_div(parent, "period_accounts")
         for(const a of this.accounts) {
             a.show(this.accounts_elem)
@@ -152,7 +205,7 @@ class Account extends Obj
 {
     constructor(ctx, name) {
         super(ctx)
-        this.name = name
+        this.name = new EntryTextValue(this, "acname", name)
         this.table = new Table(this)
         this.initial_balance = new BalanceEntry(this, 0)
         this.elem = null
@@ -165,7 +218,7 @@ class Account extends Obj
         return a
     }
     to_json() {
-        return { name:this.name, 
+        return { name:this.name.value, 
                  table:this.table.to_json(), 
                  initial_balance:this.initial_balance.to_json() }
     }
@@ -177,8 +230,7 @@ class Account extends Obj
         }
         this.elem = add_div(parent, "obj_account")
         const title_elem = add_div(this.elem, "account_title")
-        const name_elem = add_div(title_elem, "account_title_name")
-        name_elem.innerText = this.name
+        this.name.show(title_elem)
         const remove_btn = add_div(title_elem, "entry_remove")
         remove_btn.addEventListener("click", ()=>{
             this.ctx.remove_account(this)
@@ -337,7 +389,7 @@ class Table extends Obj
             this.footer_elems.expected_balance.innerText = expected_balance
             // sub-report can be negative but top-level entry can be positive
             const different = (Math.abs(Math.abs(this.last_balances.balance) - Math.abs(expected_balance)) >= 0.0099)
-            hide(this.footer_elems.wrong_cont, different)
+            hide(this.footer_elems.wrong_cont, !different)
         }
     }
     trigger_balance() {
@@ -550,7 +602,7 @@ class EntryTextValue extends Obj
         this.value_elem = add_div(this.elem, "obj_val_value")
         const value_s = this.to_string(this.value)
         this.set_value_elem(value_s)
-        this.input_elem = add_elem(this.elem, "input", ["obj_val_input", "obj_val_" + this.name])
+        this.input_elem = add_elem(this.elem, "input", ["obj_val_input", "obj_val_inp_" + this.name])
         this.input_elem.type = "text"
         this.input_elem.spellcheck = false
         this.input_elem.value = value_s
@@ -895,69 +947,6 @@ class ParserMaxSheet extends ParserBase
 const g_parser_clss = [ParserLeumiHtml, ParserMaxSheet]
 
 
-function selected_period() {
-    return g_db.periods[g_db.selected_period_idx]
-}
-
-function switch_to_period(index, do_save)
-{
-    g_db.selected_period_idx = index
-    console.log("Switch to period " + selected_period().name)
-    show_accounts()
-    if (do_save)
-        save_db()
-}
-
-
-function add_period_dlg(parent)
-{
-    input_dlg(parent, "Input", "Period Name", (v)=>{
-        g_db.periods.push(new Period(g_db, v))
-        g_db.selected_period_idx = g_db.periods.length - 1
-        show_periods_selector()
-        save_db()
-    })
-}
-
-function show_periods_selector()
-{
-    g_periods_elem.innerText = ""
-    const se = add_elem(g_periods_elem, "select", "period_combo")
-    for(const p of g_db.periods) {
-        const o = add_elem(se, 'option')
-        o.innerText = p.name
-        o.period = p 
-    }
-
-    if (g_db.periods.length == 0) {
-        const o = add_elem(se, "option")
-        o.period = null // add empty so that "Add period..." would generate an event
-    }
-    const adder = add_elem(se, "option")
-    adder.innerText = "Add Period..."
-    if (g_db.selected_period_idx !== undefined) {
-        if (g_db.selected_period_idx < g_db.periods.length) {
-            se.selectedIndex = g_db.selected_period_idx
-            switch_to_period(se.selectedIndex, false)
-        }
-        else {
-            delete g_db.selected_period_idx
-            se.selectedIndex = 0
-        }
-    }
-
-    se.addEventListener('input', function() { 
-        if (se.selectedIndex == adder.index) {
-            se.selectedIndex = 0
-            add_period_dlg(body)
-            return;
-        }
-        switch_to_period(se.selectedIndex, true)
-    })
-}
-
-
-
 function show_accounts()
 {
     g_accounts_elem.innerText = ""
@@ -970,8 +959,7 @@ function page_onload()
 {
     g_db = new Database(null)
     load_db()
-    g_periods_elem = add_div(body, "period_cont")
+    add_div(body, "periods_standin")
     g_accounts_elem =  add_div(body, "accounts_cont")
-    show_periods_selector()
-    show_accounts()
+    g_db.show(body)
 }

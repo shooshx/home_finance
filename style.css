@@ -3,12 +3,36 @@ body {
     user-select: none;
     -webkit-user-select: none;
     direction: rtl;
+    margin: 0;
+    display: flex;
+    overflow-y: scroll;
 }
 
+.periods_standin { /* added to the flex since the period_cont is fixed */
+    flex-basis: 150px;
+}
 
 .period_cont {
     margin-bottom: 10px;
+    background-color: #e5e5e5;
+    height: 100%;
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 150px;
 }
+.period_title {
+    background-color: #afaffe;
+    margin-bottom: 5px;
+    height: 30px;
+    display: flex;
+    padding: 3px 10px 0 0;
+}
+.accounts_cont {
+    flex-grow: 1;
+}
+
+
 .obj_account {
     background-color: #d4d4d4;
     border-radius: 15px;
@@ -22,9 +46,6 @@ body {
     margin: 0 10px 10px 0;
     font-weight: bold;
     display: flex;
-}
-.account_title_name {
-    flex-grow: 1;
 }
 
 .obj_table {
@@ -137,7 +158,7 @@ body {
     flex-grow: 0;
     flex-basis: 100px;
 }
-.obj_val_amount, .obj_val_hdr_amount {
+.obj_val_amount,  .obj_val_hdr_amount {
     flex-grow: 0;
     flex-basis: 100px;
 }
@@ -157,7 +178,42 @@ body {
     text-align: left;
     direction: ltr;
 }
+.obj_val_acname {
+    flex-grow: 1;
+    height: auto;
+    background: initial;
+}
+.obj_val_inp_acname {
+    font-size: 20px;
+    font-weight: bold;
+    background-color: #d4d4d4;
+}
 
+.period_selector {
+    height: 40px;
+    background: #bebeff;
+    margin: 5px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    font-size: 20px;
+}
+.selected_period {
+    background: #8e8eff;
+}
+.obj_val_prname {
+    background-color: initial;
+    flex-grow: 1;
+    font-size: 20px;
+}
+.obj_val_inp_prname {
+    background-color: #afaffe;
+    font-size: 20px;
+}
+.sel_btn_prname {
+    font-size: 20px;
+    margin: 0 7px 0 0;
+}
 
 .number_label {
     font-family: courier;
