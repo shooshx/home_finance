@@ -53,6 +53,12 @@ function checkParseInt(s) {
 function roundAmount(n) {
     return (Math.round(n * 100)/100).toFixed(2)
 }
+function hide(e, v) {
+    if (v)
+        e.classList.add("hidden")
+    else
+        e.classList.remove("hidden")
+}
 
 class Obj
 {
@@ -219,7 +225,7 @@ class Table extends Obj
     show(parent) {
         if (this.elem !== null) {
             parent.appendChild(this.elem)
-            this.elem.classList.remove("hidden")
+            hide(this.elem, false)
             return
         }
         this.elem = add_div(parent, "obj_table")
@@ -243,18 +249,30 @@ class Table extends Obj
     hide() {
         if (this.elem === null)
             return
-        this.elem.classList.add("hidden")
+        hide(this.elem, true)
     }
 
     show_footer(parent, table_parent) {
         if (this.is_top_level) {
             const footer = add_div(parent, "table_footer")
-            const sp1 = add_div(footer, "table_footer_spacer_1")
-            const total_plus = add_div(footer, ["obj_val_value", "table_footer_tplus", "number_label"])
-            const total_minus = add_div(footer, ["obj_val_value", "table_footer_tminus", "number_label"])
-            const sp2 = add_div(footer, "table_footer_spacer_2")
+            const sp1a = add_div(footer, ["table_footer_spacer_1a", "hidden"])
+            const sp1b = add_div(footer, "table_footer_spacer_1b")
+            const total_plus = add_div(footer, ["obj_val_value", "table_total", "table_tplus", "number_label", "hidden"])
+            const total_minus = add_div(footer, ["obj_val_value", "table_total", "table_tminus", "number_label", "hidden"])
+            const total = add_div(footer, ["obj_val_value", "table_total", "number_label"])
+            add_div(footer, "table_footer_spacer_2")
             const balance = add_div(footer, ["obj_val_value", "table_footer_balance", "number_label"])
-            this.footer_elems = { total_plus:total_plus, total_minus:total_minus, balance:balance }
+            this.footer_elems = { total_plus:total_plus, total_minus:total_minus, total:total, balance:balance }
+            const hide_plus_minus = (v)=>{
+                hide(total_plus, v)
+                hide(total_minus, v)
+                hide(sp1a, v)
+                hide(total, !v)
+                hide(sp1b, !v)
+            }
+            total_plus.addEventListener("click", ()=>{ hide_plus_minus(true) })
+            total_minus.addEventListener("click", ()=>{ hide_plus_minus(true) })
+            total.addEventListener("click", ()=>{ hide_plus_minus(false) })
         }
 
         const btns_line = add_div(parent, "table_btns")
@@ -272,8 +290,11 @@ class Table extends Obj
 
         if (!this.is_top_level) { // add the balance in the btn line
             const sp = add_div(btns_line, "table_btns_spacer")
+            const wrong_cont = add_div(btns_line, "wrong_cont")
+            add_div(wrong_cont, "wrong_label").innerText = ":ייתרה שגויה"
+            const expected_balance = add_div(wrong_cont, ["obj_val_value", "expected_balance", "number_label"])
             const balance = add_div(btns_line, ["obj_val_value", "table_footer_balance", "number_label"])
-            this.footer_elems = { balance:balance }
+            this.footer_elems = { balance:balance, wrong_cont:wrong_cont, expected_balance:expected_balance }
         }
         this.update_footer()
     }
@@ -309,6 +330,14 @@ class Table extends Obj
         if (this.is_top_level) {
             this.footer_elems.total_plus.innerText = roundAmount(this.last_balances.plus)
             this.footer_elems.total_minus.innerText = roundAmount(this.last_balances.minus)
+            this.footer_elems.total.innerText = roundAmount(this.last_balances.plus + this.last_balances.minus)
+        }
+        else {
+            const expected_balance = this.ctx.amount.value
+            this.footer_elems.expected_balance.innerText = expected_balance
+            // sub-report can be negative but top-level entry can be positive
+            const different = (Math.abs(Math.abs(this.last_balances.balance) - Math.abs(expected_balance)) >= 0.0099)
+            hide(this.footer_elems.wrong_cont, different)
         }
     }
     trigger_balance() {
