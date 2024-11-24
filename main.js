@@ -1,10 +1,6 @@
-
 "use strict";
 
-
 let g_db = null
-
-let g_accounts_elem = null
 
 function save_db() {
     const json = g_db.to_json()
@@ -59,6 +55,9 @@ function hide(e, v) {
     else
         e.classList.remove("hidden")
 }
+function removeElem(e) {
+    e.parentElement.removeChild(e)
+}
 
 class Obj
 {
@@ -70,7 +69,7 @@ class Obj
     invalidate() {
         if (this.elem === null)
             return
-        this.elem.parentElement.removeChild(this.elem) 
+        removeElem(this.elem) 
         this.elem = null
     }
 }
@@ -83,6 +82,7 @@ class Database extends Obj
         this.selected_period_idx = 0
 
         this.elem = null
+        this.accounts_cont_elem = null
     }
     static from_json(ctx, j) {
         const db = new Database(ctx)
@@ -99,29 +99,45 @@ class Database extends Obj
         return this.periods[this.selected_period_idx]
     }
     set_selected(p) {
-        this.selected_period().side_btn_elems.selector.classList.remove("selected_period")
+        if (this.selected_period())
+            this.selected_period().side_btn_elems.selector.classList.remove("selected_period")
         const idx = this.periods.indexOf(p)
         this.selected_period_idx = idx
-        this.selected_period().side_btn_elems.selector.classList.add("selected_period")
-        this.show_selected_period()
+        if (this.selected_period()) {
+            this.selected_period().side_btn_elems.selector.classList.add("selected_period")
+            this.show_selected_period()
+        }
+    }
+
+    remove_period(period) {
+        const idx = this.periods.indexOf(period)
+        this.periods.splice(idx, 1)
+        removeElem(period.side_btn_elems.selector)
+        this.accounts_cont_elem.innerText = ""
+        this.selected_period_idx = -1
+        save_db()
     }
 
     show_selected_period()
     {
-        g_accounts_elem.innerText = ""
+        this.accounts_cont_elem.innerText = ""
         const period = this.selected_period()
-        period.show(g_accounts_elem)
+        period.show(this.accounts_cont_elem)
     }
 
+    // called once on startup
     show(parent) 
     {
         this.elem = add_div(parent, "period_cont")
+        add_div(parent, "periods_standin")
+        this.accounts_cont_elem =  add_div(parent, "accounts_cont")
+
         const p_btns = add_div(this.elem, "period_btns")
         for(const p of this.periods) {
             this.show_period_btn(p_btns, p)
         }
         this.set_selected(this.selected_period())
-        add_push_btn(this.elem, "Add Period", ()=>{
+        add_push_btn(this.elem, "הוסף תקופה", ()=>{
             const p = new Period(this, "אין שם")
             this.periods.push(p)
             this.show_period_btn(p_btns, p)
@@ -167,19 +183,22 @@ class Period extends Obj
             parent.appendChild(this.elem)
             return
         }
-        const title = add_div(parent, "period_title")
-        this.name.show(title)
+        const title_elem = add_div(parent, "period_title")
+        this.name.show(title_elem)
+        const remove_btn = add_div(title_elem, "entry_remove")
+        remove_btn.addEventListener("click", ()=>{
+            message_box(body,"", 'למחוק את תקופה' + ': "' + this.name.value + '"', [
+                {text:"לא"}, {text:"כן", func:()=>{ this.ctx.remove_period(this) }}])
+        })
         this.accounts_elem = add_div(parent, "period_accounts")
         for(const a of this.accounts) {
             a.show(this.accounts_elem)
         }
-        add_push_btn(parent, "Add Account...", ()=>{
-            input_dlg(body, "Input", "Account Name", (v)=>{
-                const a = new Account(this, v)
-                this.accounts.push(a)
-                save_db()
-                a.show(this.accounts_elem)
-            }) 
+        add_push_btn(parent, "הוסף חשבון", ()=>{
+            const a = new Account(this, "אין שם")
+            this.accounts.push(a)
+            save_db()
+            a.show(this.accounts_elem)
         })
     }
     remove_account(account) {
@@ -233,7 +252,8 @@ class Account extends Obj
         this.name.show(title_elem)
         const remove_btn = add_div(title_elem, "entry_remove")
         remove_btn.addEventListener("click", ()=>{
-            this.ctx.remove_account(this)
+            message_box(body,"", 'למחוק את חשבון' + ': "' + this.name.value + '"', [
+                {text:"לא"}, {text:"כן", func:()=>{ this.ctx.remove_account(this) }}])
         })
         // needed so that table can recreate itself by deleting it's elem
         const table_wrap = add_div(this.elem)
@@ -272,7 +292,7 @@ class Table extends Obj
         this.invalidate()
         save_db()
         this.entry_count_changed()
-        this.update_balance()
+        this.trigger_balance()
     }
     show(parent) {
         if (this.elem !== null) {
@@ -328,16 +348,19 @@ class Table extends Obj
         }
 
         const btns_line = add_div(parent, "table_btns")
-        add_push_btn(btns_line, "Add Entry...", ()=>{
+        add_push_btn(btns_line, "הוסף שורה", ()=>{
             this.add_empty_entry()
             this.trigger_balance()
         }, "table_btn")
-        add_push_btn(btns_line, "Paste Statement...", ()=>{
+        add_push_btn(btns_line, 'הוסף דו"ח', ()=>{
             dlg_statement(body, this)
         }, "table_btn")
-        add_push_btn(btns_line, "Clear", ()=>{
-            this.clear()
-            this.show(table_parent)
+        add_push_btn(btns_line, "מחק", ()=>{
+            message_box(body,"", 'למחוק את כל תוכן הטבלא?', [
+                {text:"לא"}, {text:"כן", func:()=>{ 
+                    this.clear()
+                    this.show(table_parent) 
+                }}])
         }, "table_btn")
 
         if (!this.is_top_level) { // add the balance in the btn line
@@ -367,7 +390,7 @@ class Table extends Obj
     remove_entry(entry) {
         const idx = this.entries.indexOf(entry)
         this.entries.splice(idx, 1)
-        entry.elem.parentElement.removeChild(entry.elem)
+        removeElem(entry.elem)
         save_db()
         this.entry_count_changed()
     }
@@ -947,19 +970,11 @@ class ParserMaxSheet extends ParserBase
 const g_parser_clss = [ParserLeumiHtml, ParserMaxSheet]
 
 
-function show_accounts()
-{
-    g_accounts_elem.innerText = ""
-    const period = selected_period()
-    period.show(g_accounts_elem)
-}
-
 
 function page_onload()
 {
     g_db = new Database(null)
     load_db()
-    add_div(body, "periods_standin")
-    g_accounts_elem =  add_div(body, "accounts_cont")
+
     g_db.show(body)
 }

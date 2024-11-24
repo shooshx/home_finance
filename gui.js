@@ -206,11 +206,11 @@ function input_dlg(parent, caption, text, on_save_func)
     name_input.spellcheck = false
 }
 
-function message_box(title, text, opts) 
+function message_box(parent, title, text, opts) 
 {
     const rect = {visible:true}
-    const close_action = ()=> { main_view.removeChild(dlg.elem)}
-    const dlg = create_dialog(main_view, title, false, rect, close_action)
+    const close_action = ()=> { parent.removeChild(dlg.elem)}
+    const dlg = create_dialog(parent, title, false, rect, close_action)
     const label = add_div(dlg.client, "dlg_label")
     label.innerText = text
     

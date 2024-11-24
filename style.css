@@ -30,13 +30,14 @@ body {
 }
 .accounts_cont {
     flex-grow: 1;
+    margin-bottom: 10px;
 }
 
 
 .obj_account {
     background-color: #d4d4d4;
     border-radius: 15px;
-    padding: 5px;
+    padding: 5px 0 0 5px;
     margin-bottom: 10px;
     max-width: 900px;
     margin: 0 auto 0 auto;
@@ -63,7 +64,7 @@ body {
 }
 .table_header {
     display: flex;
-    margin: 2px 11px 3px 0;
+    margin: 2px 33px 3px 0;
 }
 .table_hdr_field {
     display: inline-block;
@@ -182,6 +183,7 @@ body {
     flex-grow: 1;
     height: auto;
     background: initial;
+    min-height: 24px;
 }
 .obj_val_inp_acname {
     font-size: 20px;
@@ -240,18 +242,19 @@ body {
 .table_footer_spacer_2 {
     flex-grow: 1;
 }
-.table_tplus {
-    background: #91ff90;
-}
-.table_tminus {
-    background: #ffb3b3;
-}
+
 .table_total {
     flex-basis: 120px;
     margin: 0 0 3px 3px;
     border-radius: 4px;
     border: 1px solid #555;
     background-color: #bcffec;
+}
+.table_tplus {
+    background: #91ff90;
+}
+.table_tminus {
+    background: #ffb3b3;
 }
 .table_footer_balance {
     flex-basis: 100px;
@@ -263,6 +266,7 @@ body {
 }
 .table_btns {
     display: flex;
+    margin-right: 7px;
 }
 .table_btn {
     flex-grow: 0;
