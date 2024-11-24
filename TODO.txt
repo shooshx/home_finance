@@ -1,4 +1,4 @@
-- period selector as tabs
+
+- change order of accounts, tags
 - accounts should be expanded and contracted
 - new period copies accounts
-- option to enable delete on anything at once

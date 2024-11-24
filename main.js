@@ -80,19 +80,24 @@ class Database extends Obj
         super(ctx)
         this.periods = []
         this.selected_period_idx = 0
+        this.tags = new TagsEditor(this)
 
         this.elem = null
         this.accounts_cont_elem = null
     }
     static from_json(ctx, j) {
         const db = new Database(ctx)
+        g_db = db
+        db.tags = TagsEditor.from_json(db, j.tags) // needs to be first
         db.periods = arr_from_json(db, j.periods, Period)
         if (j.selected_period_idx)
             db.selected_period_idx = j.selected_period_idx
         return db
     }
     to_json() {
-        return { periods: arr_to_json(this.periods), selected_period_idx: this.selected_period_idx }
+        return { periods: arr_to_json(this.periods), 
+                 selected_period_idx: this.selected_period_idx, 
+                 tags: this.tags.to_json() }
     }
 
     selected_period() {
@@ -143,7 +148,12 @@ class Database extends Obj
             this.show_period_btn(p_btns, p)
             this.set_selected(p)
             save_db()
-        })
+        }, "sidebar_btn")
+        add_push_btn(this.elem, "טגיות", ()=>{
+            this.set_selected(null)
+            this.accounts_cont_elem.innerText = ""
+            this.tags.show(this.accounts_cont_elem)
+        }, "sidebar_btn")
     }
 
     show_period_btn(parent, period) {
@@ -183,18 +193,19 @@ class Period extends Obj
             parent.appendChild(this.elem)
             return
         }
-        const title_elem = add_div(parent, "period_title")
+        this.elem = add_div(parent, "obj_period")
+        const title_elem = add_div(this.elem, "period_title")
         this.name.show(title_elem)
         const remove_btn = add_div(title_elem, "entry_remove")
         remove_btn.addEventListener("click", ()=>{
             message_box(body,"", 'למחוק את תקופה' + ': "' + this.name.value + '"', [
                 {text:"לא"}, {text:"כן", func:()=>{ this.ctx.remove_period(this) }}])
         })
-        this.accounts_elem = add_div(parent, "period_accounts")
+        this.accounts_elem = add_div(this.elem, "period_accounts")
         for(const a of this.accounts) {
             a.show(this.accounts_elem)
         }
-        add_push_btn(parent, "הוסף חשבון", ()=>{
+        add_push_btn(this.elem, "הוסף חשבון", ()=>{
             const a = new Account(this, "אין שם")
             this.accounts.push(a)
             save_db()
@@ -476,7 +487,7 @@ class Entry extends Obj
               {name:"note", disp:"הערה"},
               {name:"balance", disp:"יתרה"}]
 
-    constructor(ctx, date_v, amount_v, bank_desc_v, note_v) {
+    constructor(ctx, date_v, amount_v, bank_desc_v, note_v, tag_id_v) {
         super(ctx)
         this.date = new EntryDateValue(this, "date", date_v)
         this.amount = new EntryNumValue(this, "amount", amount_v)
@@ -484,10 +495,11 @@ class Entry extends Obj
         this.category = null
         this.bank_desc = new EntryBidiTextValue(this, "bank_desc", bank_desc_v)
         this.note = new EntryTextValue(this, "note", note_v)
+        this.tag = new EntryTagValue(this, tag_id_v)
         this.breakdown = null // optional Table
         this.balance = 0 // balance after this transaction
 
-        this.fields = [this.date, this.bank_desc, this.amount, this.note]
+        this.fields = [this.date, this.bank_desc, this.amount, this.note, this.tag]
         this.elem = null
         this.balance_elem = null
         this.expand_btn = null
@@ -499,16 +511,17 @@ class Entry extends Obj
             return null
         }
         const date = parseDate(j.date)
-        const e = new Entry(ctx, date, j.amount, j.bank_desc, j.note)
+        const e = new Entry(ctx, date, j.amount, j.bank_desc, j.note, j.tag_id)
         if (j.breakdown)
             e.breakdown = Table.from_json(e, j.breakdown)
         return e
     }
     to_json() {
-        const d = { date:this.date.to_string(), 
-                    amount:this.amount.value, 
-                    bank_desc:this.bank_desc.value, 
-                    note:this.note.value
+        const d = { date: this.date.to_string(), 
+                    amount: this.amount.value, 
+                    bank_desc: this.bank_desc.value, 
+                    note: this.note.value,
+                    tag_id: this.tag.tag_id
                   }
         if (this.breakdown !== null)
             d.breakdown = this.breakdown.to_json()
@@ -622,7 +635,7 @@ class EntryTextValue extends Obj
             return
         }
         this.elem = add_div(parent, ["obj_txt_val", "obj_val_" + this.name])
-        this.value_elem = add_div(this.elem, "obj_val_value")
+        this.value_elem = add_div(this.elem, ["obj_val_value", "obj_val_val_" + this.name])
         const value_s = this.to_string(this.value)
         this.set_value_elem(value_s)
         this.input_elem = add_elem(this.elem, "input", ["obj_val_input", "obj_val_inp_" + this.name])
@@ -640,8 +653,13 @@ class EntryTextValue extends Obj
                 this.change_cb(this.value)
             save_db()
         })
-        this.input_elem.addEventListener("blur", ()=>{
+        const hide_input = ()=>{
             this.input_elem.style.visibility = "hidden"
+        }
+        this.input_elem.addEventListener("blur", hide_input)
+        this.input_elem.addEventListener("keydown", (ev)=>{
+            if(ev.key === 'Enter')
+                hide_input()
         })
     }
 }
@@ -687,6 +705,215 @@ class EntryBidiTextValue extends EntryTextValue {
             this.value_elem.classList.add("dir_ltr")
         else
             this.value_elem.classList.remove("dir_ltr")
+    }
+}
+
+class TagTextValue extends EntryTextValue {
+    set_value_elem(v) {
+        // the text of the tag is already set by the callback which sets the css content
+    }
+}
+
+class EntryTagValue extends Obj {
+    constructor(ctx, tag_id) {
+        super(ctx)
+        if (!tag_id || tag_id == -1) {
+            this.tag_id = -1
+            this.tag = null
+        }
+        else {
+            this.tag_id = tag_id
+            this.tag = g_db.tags.get_by_id(tag_id)
+            if (this.tag === null)
+                this.tag_id = -1
+        }
+        
+        this.elem = null
+    }
+
+    show(parent) {
+        if (this.elem !== null) {
+            parent.appendChild(this.elem)
+            return
+        }
+        this.elem = add_div(parent, ["tag_value", "obj_txt_val"])
+        //const label = add_div(this.elem, "tag_value")
+        if (this.tag)
+            this.tag.emplace(this.elem)
+        else
+            Tag.emplace_null(this.elem)
+
+        this.elem.addEventListener("click", (ev)=>{
+            ev.stopPropagation() // prevent the document handler from dismissing the menu
+            g_db.tags.tags_menu(this.elem, (tag)=>{
+                this.tag = tag
+                if (tag !== null) {
+                    this.tag_id = tag.id
+                    this.tag.emplace(this.elem)
+                }
+                else {
+                    this.tag_id = -1
+                    Tag.emplace_null(this.elem)
+                }
+                save_db()
+            })
+        })
+
+    }
+}
+
+class TagsEditor extends Obj
+{
+    constructor(ctx) {
+        super(ctx)
+        this.tags = []
+        this.id_gen = 1
+        this.elem = null
+        this.tag_by_id = {}
+        this.tags_menu_elem = null
+    }
+    static from_json(ctx, j) {
+        const t = new TagsEditor(ctx)
+        if (!j || !j.tags)
+            return t
+        t.tags = arr_from_json(t, j.tags, Tag)
+
+        let max_id = 1
+        for(const tg of t.tags) {
+            max_id = Math.max(max_id, tg.id)
+            t.reg_id(tg)
+        }
+        t.id_gen = max_id + 1
+        return t
+    }
+    reg_id(t) {
+        if (this.tag_by_id[t.id] !== undefined)
+            console.error("same id to multiple tags")
+        this.tag_by_id[t.id] = t
+    }
+    to_json() {
+        return { tags: arr_to_json(this.tags) }
+    }
+    get_by_id(id) {
+        const t = this.tag_by_id[id]
+        if (t === undefined) // can happen if tag was removed from tags list but is still referenced
+            return null
+        return t
+    }
+    remove_tag(tag) {
+        const idx = this.tags.indexOf(tag)
+        this.tags.splice(idx, 1)
+        removeElem(tag.elem)
+        save_db()
+        this.create_tags_menu()
+    }
+    show(parent) {
+        if (this.elem !== null) {
+            parent.appendChild(this.elem)
+            return
+        }
+        this.elem = add_div(parent, "obj_tags")
+        const tags_elem = add_div(this.elem, "tags_cont")
+        for(const t of this.tags)
+            t.show(tags_elem)
+        add_push_btn(this.elem, "הוסף טאג", ()=>{
+            const t = new Tag(this, "אין ערך", "#aaaaaa", this.id_gen)
+            this.id_gen += 1
+            this.tags.push(t)
+            this.reg_id(t)
+            save_db()
+            t.show(tags_elem)
+            this.create_tags_menu()
+        })
+    }
+    create_tags_menu() {
+        this.tags_menu_elem = add_div(body, ["tags_menu", "hidden"])
+        const none_lbl = add_div(this.tags_menu_elem, ["obj_val_val_tag", "tag_menu_label", "tag_value_has"])
+        none_lbl.innerText = "<כלום>"
+        none_lbl.addEventListener("click", ()=>{ this.tags_menu_elem.select_cb(null) })
+        for(const t of this.tags) {
+            const lbl = add_div(this.tags_menu_elem, ["obj_val_val_tag", "tag_menu_label", "tag_value_has"])
+            t.emplace(lbl)
+            lbl.addEventListener("click", (ev)=>{ this.tags_menu_elem.select_cb(t) })
+        }
+        document.addEventListener("click", ()=>{
+            hide(this.tags_menu_elem, true)
+        })
+    }
+    tags_menu(parent, select_cb) {
+        if (this.tags_menu_elem === null)
+            this.create_tags_menu()
+        hide(this.tags_menu_elem, false)
+        const rect = parent.getBoundingClientRect()
+        this.tags_menu_elem.style.top = rect.top + "px"
+        this.tags_menu_elem.style.left = rect.left + "px"
+        this.tags_menu_elem.select_cb = (tag)=>{
+            select_cb(tag)
+            this.tags_menu_elem.select_cb = null
+            hide(this.tags_menu_elem, true)
+        }
+    }
+}
+
+function get_text_color(is_dark) {
+    return is_dark ? "#ffffff" : "#000000"
+}
+
+class Tag extends Obj
+{
+    constructor(ctx, value, color, id) {
+        super(ctx)
+        this.value = new TagTextValue(this, "tag", value)
+        this.value.change_cb = ()=>{ this.update_css() }
+        this.color = color
+        this.id = id
+        this.elem = null
+        this.text_color = get_text_color(ColorPicker.parse_hex(this.color).is_dark)
+    
+        let idx = document.styleSheets[0].insertRule('.tag[tag_id="' + this.id + '"] { background-color: initial; }')
+        this.css_rule = document.styleSheets[0].cssRules[idx]
+        idx = document.styleSheets[0].insertRule('.tag[tag_id="' + this.id + '"]::after { content: ""; }')
+        this.css_content_rule = document.styleSheets[0].cssRules[idx]
+        this.update_css()
+    }
+    static from_json(ctx, j) {
+        return new Tag(ctx, j.value, j.color, j.id)
+    }
+    to_json() {
+        return { value: this.value.value, color: this.color, id: this.id }
+    }
+    emplace(e) {
+        e.classList.add("tag")
+        e.classList.add("tag_value_has")
+        e.setAttribute("tag_id", this.id)
+    }
+    static emplace_null(e) {
+        e.removeAttribute("tag_id")
+        e.classList.remove("tag_value_has")
+    }
+
+    update_css() {
+        this.css_rule.style.backgroundColor = this.color
+        this.css_rule.style.color = this.text_color
+        this.css_content_rule.style.content = '"' + this.value.value + '"'
+    }
+    show(parent) {
+        if (this.elem !== null) {
+            parent.appendChild(this.elem)
+            return
+        }
+        this.elem = add_div(parent, "obj_tag", "tag")
+        this.value.show(this.elem)
+        this.emplace(this.value.value_elem)
+        const color_edit = add_elem(this.elem, "input", "tag_color")
+        ColorEditBox.create_at(color_edit, 150, (c)=>{
+            this.color = c.hex
+            this.text_color = get_text_color(c.is_dark)
+            this.update_css()
+            save_db()
+        }, {}, this.color)
+        const remove_btn = add_div(this.elem, "entry_remove")
+        remove_btn.addEventListener("click", ()=>{ this.ctx.remove_tag(this) })
     }
 }
 
