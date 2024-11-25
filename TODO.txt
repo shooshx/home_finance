@@ -4,3 +4,6 @@
 - accounts should be expanded and contracted
 - new period copies accounts
 - export/import
+
+- multi-period summary
+    - validate start is as finish

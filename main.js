@@ -165,8 +165,8 @@ class Database extends Obj
     }
 
     show_tags_dlg() {
-        const rect = {visible:false}
-        const dlg = create_dialog(body, "Tags", false, rect, null)
+        const rect = {visible:false, left:990}
+        const dlg = create_dialog(body, "טגיות", false, rect, null)
         dlg.elem.style.backgroundColor = "#ffffff"
         this.tags.show(dlg.client)
         return dlg
@@ -266,6 +266,8 @@ class Period extends Obj
         d.total_minus = add_line("הוצאות:", "tminus")
         d.end_balance = add_line("ייתרה סופית:")
         d.col_left = col_left
+        d.wrongs = add_div(col_right, ["sum_wrongs", "hidden"])
+        d.wrongs.innerText = "יש שגיאות יתרה";
         this.summary_elems = d
 
         this.update_summary()
@@ -278,6 +280,7 @@ class Period extends Obj
             if (d[n].num !== undefined)
                 d[n].reset()
         const tb = new TagsBalances()
+        let has_wrong = false
         for(const ac of this.accounts) {
             d.initial_balance.add(ac.initial_balance.amount.value)
             d.end_balance.add(ac.table.last_balances.balance)
@@ -285,7 +288,10 @@ class Period extends Obj
             d.total_minus.add(ac.table.last_balances.minus)
             d.total.add(ac.table.last_balances.plus + ac.table.last_balances.minus)
             ac.table.tags_balance(tb)
+            if (ac.table.last_balances.has_wrong_balance)
+                has_wrong = true
         }
+        hide(d.wrongs, !has_wrong)
         // per-tag table
         const tb_lst = Object.values(tb.id_to_balance)
         tb_lst.sort((a, b)=>{ return b.magnitude() - a.magnitude() })
@@ -327,13 +333,14 @@ class TagsBalances {
 }
 
 class Balances {
-    constructor(balance, plus, minus) {
+    constructor(balance, plus, minus, has_wrong=false) {
         this.balance = balance
         this.plus = plus
         this.minus = minus
+        this.has_wrong_balance = has_wrong
     }
     clone() {
-        return new Balances(this.balance, this.plus, this.minus)
+        return new Balances(this.balance, this.plus, this.minus, this.has_wrong_balance)
     }
     magnitude() {
         return Math.abs(this.plus) + Math.abs(this.minus)
@@ -561,17 +568,17 @@ class Table extends Obj
     trigger_balance() {
         this.ctx.trigger_balance()
     }
-    update_balance(b = null) {
-        if (this.is_top_level)
-            console.assert(b !== null)
-        else { // balances of sub-table are separete
-            console.assert(b === null)
+    update_balance(b) {
+        const top_b = b
+        if (!this.is_top_level) { 
+            // balances of sub-table are separete
             b = new Balances(0, 0, 0)
         }
-        
         for(const e of this.entries)
             e.update_balance(b)
         this.last_balances = b.clone()
+        if (!this.is_top_level && this.get_inconsistency() != 0)
+            top_b.has_wrong_balance = true // need to communicate this to the top balance run
         this.update_footer()
     }
     tags_balance(tb) {
@@ -739,8 +746,8 @@ class Entry extends Obj
             b.plus += v
         else
             b.minus += v
-        if (this.breakdown !== null)
-            this.breakdown.update_balance()
+        if (this.has_breakdown())
+            this.breakdown.update_balance(b)
     }
     trigger_balance() { // trigger_balance go up the tree
         this.ctx.trigger_balance()
@@ -871,18 +878,12 @@ class TagTextValue extends EntryTextValue {
 class EntryTagValue extends Obj {
     constructor(ctx, tag_id) {
         super(ctx)
-        if (!tag_id || tag_id == -1) {
-            this.tag_id = -1
-            this.tag = null
-        }
-        else {
-            this.tag_id = tag_id
-            this.tag = g_db.tags.get_by_id(tag_id)
-            if (this.tag === null)
-                this.tag_id = -1
-        }
-        
+        this.set_tag(g_db.tags.get_by_id(tag_id))
         this.elem = null
+    }
+    set_tag(tag) {
+        this.tag = tag
+        this.tag_id = Tag.get_id(tag)
     }
 
     show(parent) {
@@ -896,8 +897,7 @@ class EntryTagValue extends Obj {
         this.elem.addEventListener("click", (ev)=>{
             ev.stopPropagation() // prevent the document handler from dismissing the menu
             g_db.tags.tags_menu(this.elem, (tag)=>{
-                this.tag = tag
-                this.tag_id = Tag.get_id(tag)
+                this.set_tag(tag)
                 Tag.emplace(tag, this.elem)
                 if (this.change_cb)
                     this.change_cb(this.value)
@@ -963,7 +963,7 @@ class TagsEditor extends Obj
         for(const t of this.tags)
             t.show(tags_elem)
         add_push_btn(this.elem, "הוסף טאג", ()=>{
-            const t = new Tag(this, "אין ערך", "#aaaaaa", this.id_gen)
+            const t = new Tag(this, "אין ערך", "#aaaaaa", this.id_gen, null)
             this.id_gen += 1
             this.tags.push(t)
             this.reg_id(t)
@@ -1007,14 +1007,19 @@ function get_text_color(is_dark) {
 
 class Tag extends Obj
 {
-    constructor(ctx, value, color, id) {
+    constructor(ctx, value, color, id, strs) {
         super(ctx)
         this.value = new TagTextValue(this, "tag", value)
         this.value.change_cb = ()=>{ this.update_css() }
         this.color = color
         this.id = id
-        this.elem = null
+        // strs make automatic tagging when adding a statement
+        this.strs = strs
+        if (!this.strs)
+            this.strs = []
         this.text_color = get_text_color(ColorPicker.parse_hex(this.color).is_dark)
+        this.elem = null
+        this.strs_elem = null
     
         let idx = document.styleSheets[0].insertRule('.tag[tag_id="' + this.id + '"] { background-color: initial; }')
         this.css_rule = document.styleSheets[0].cssRules[idx]
@@ -1023,10 +1028,10 @@ class Tag extends Obj
         this.update_css()
     }
     static from_json(ctx, j) {
-        return new Tag(ctx, j.value, j.color, j.id)
+        return new Tag(ctx, j.value, j.color, j.id, j.strs)
     }
     to_json() {
-        return { value: this.value.value, color: this.color, id: this.id }
+        return { value: this.value.value, color: this.color, id: this.id, strs: this.strs }
     }
     static emplace(tag, e, mark_none=false) {
         e.classList.add("tag")
@@ -1060,19 +1065,49 @@ class Tag extends Obj
             parent.appendChild(this.elem)
             return
         }
-        this.elem = add_div(parent, "obj_tag", "tag")
-        this.value.show(this.elem)
+        this.elem = add_div(parent, "obj_tag")
+        const line = add_div(this.elem, "tag_line", "tag")
+        this.expand_btn = add_div(line, "entry_expand")
+        this.value.show(line)
         Tag.emplace(this, this.value.value_elem)
-        const color_edit = add_elem(this.elem, "input", "tag_color")
+        const color_edit = add_elem(line, "input", "tag_color")
         ColorEditBox.create_at(color_edit, 150, (c)=>{
             this.color = c.hex
             this.text_color = get_text_color(c.is_dark)
             this.update_css()
             save_db()
         }, {}, this.color)
-        const remove_btn = add_div(this.elem, "entry_remove")
-        remove_btn.addEventListener("click", ()=>{ this.ctx.remove_tag(this) })
+        const remove_btn = add_div(line, "entry_remove")
+        remove_btn.addEventListener("click", ()=>{ 
+            message_box(body,"", 'למחוק את טאג' + ': "' + this.value.value + '"', [
+                {text:"לא"}, {text:"כן", func:()=>{ this.ctx.remove_tag(this) }}])
+        })
+        this.strs_elem = add_div(this.elem, ["tag_strs", "hidden"])
+        const strs_edit = add_elem(this.strs_elem, "textarea", "tag_strs_inp")
+        strs_edit.value = this.strs.join("\n")
+        wire_expand_btn(this.expand_btn, this.strs_elem)
+        strs_edit.addEventListener("input", ()=>{
+            const strs = strs_edit.value.split("\n")
+            this.strs = []
+            for(const s of strs) {
+                this.strs.push(s.trim())
+            }
+            save_db()
+        })
     }
+}
+
+function wire_expand_btn(btn, for_elem) {
+    btn.addEventListener("click", ()=>{
+        if (btn.getAttribute("checked") === null) {
+            for_elem.classList.remove("hidden")
+            btn.setAttribute("checked", true)
+        }
+        else {
+            for_elem.classList.add("hidden")
+            btn.removeAttribute("checked")
+        }
+    })
 }
 
 function all_english(s) {
@@ -1161,20 +1196,49 @@ function dlg_statement(parent, table)
     })
 }
 
+class TagStrLookup {
+    constructor() {
+        this.by_str = {}
+        for(const tag of g_db.tags.tags) {
+            for(const s of tag.strs) {
+                if (this.by_str[s] !== undefined) {
+                    console.error("same string appears in more than 1 tag: " + s)
+                    continue 
+                }
+                this.by_str[s] = tag
+            }
+        }
+    }
+    lookup(s) {
+        s = s.trim()
+        if (s.length == 0)
+            return null
+        const t = this.by_str[s]
+        if (!t)
+            return null
+        return t
+    }
+}
+
 class ParserBase {
     constructor(table) {
         this.table = table
         this.card_num = null
     }
     add_entries(txt, reverse) {
+        const tag_from_str = new TagStrLookup()
         const lines = txt.split("\n")
         const entries = []
         for(const line of lines) {
             try {
                 const cells = line.split("|")
                 const e = this.parse_line(cells)
-                if (e)
+                if (e) {
                     entries.push(e)
+                    const tag = tag_from_str.lookup(e.bank_desc.value)
+                    if (tag)
+                        e.tag.set_tag(tag)
+                }
             }
             catch(err) {
                 console.error(err)
@@ -1208,6 +1272,7 @@ class ParserBase {
             throw new Error("line with 2 amounts?")
         return plus_amount - minus_amount
     }
+
 }
 
 class ParserLeumiHtml extends ParserBase {
@@ -1292,7 +1357,7 @@ class MaxEntrier extends ParserBase
         if (cells.length < 10 || isNaN(cells[0].charAt(0)) || cells[0].split('-').length != 3)
             return null
         const date = parseDate(cells[0], "-")
-        const bank_desc = cells[1]
+        const bank_desc = dequote(cells[1])
         const card_num = cells[3]
         this.check_card(card_num)
         const amount_s = cells[5]

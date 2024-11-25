@@ -99,6 +99,7 @@ body {
     background-image: url(img/gray_plus.png);
     background-repeat: no-repeat;
     margin: 0 0 0 5px;
+    min-width: 19px;
 }
 .entry_expand[has_breakdown] {
     background-image: url(img/blue_plus.png);
@@ -288,14 +289,23 @@ body {
 .wrong_label {
     direction: ltr;
 }
+.sum_wrongs {
+    background-color: #f87272;
+    border-radius: 7px;
+    width: fit-content;
+    padding: 2px 10px 4px 10px;
+    margin-top: 10px;
+}
 
 .obj_tags {
     width: 300px;
     padding: 10px;
 }
 .obj_tag {
-    display: flex;
     margin-bottom: 7px;
+}
+.tag_line {
+    display: flex;
     align-items: center;
 }
 .obj_val_tag {
@@ -392,6 +402,16 @@ body {
 }
 .tag[tag_id="-1"]::after {
     content: "<כלום>";
+}
+.tag_strs {
+    margin: 5px 10px 0 5px;
+}
+.tag_strs_inp {
+    width: 100%;
+    font-family: Tahoma;
+    outline: none;
+    border-radius: 4px;
+    height: 100px;
 }
 
 
