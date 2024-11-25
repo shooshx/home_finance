@@ -57,7 +57,7 @@ body {
 .sub_table {
     background: #98c6f6;
     margin-right: 50px;
-    margin-left: 30px;
+    margin-left: 80px;
     padding: 5px 0 5px 0;
 }
 .table_header {
@@ -85,7 +85,9 @@ body {
     width: 24px;
     height: 21px;
     background-image: url(img/gray_ex.png);
+    background-repeat: no-repeat;
     cursor: auto;
+    min-width: 24px;
 }
 .entry_remove:hover {
     background-image: url(img/red_ex.png)
@@ -170,6 +172,7 @@ body {
 }
 .obj_val_note, .obj_val_hdr_note {
     flex-grow: 1;
+    max-width: 375px; /* so that it doesn't grow over others*/
 }
 .obj_val_init_balance {
     flex-grow: 0;
@@ -263,6 +266,7 @@ body {
     background: #89f3ff;
     margin-left: 27px;
     border: 1px solid #555;
+    user-select: all;
 }
 .table_btns {
     display: flex;
@@ -276,13 +280,18 @@ body {
 }
 .wrong_cont {
     display: flex;
+    background-color: #f87272;
+    padding: 0 7px 0 0;
+    margin-left: 5px;
+    border-radius: 7px;
 }
 .wrong_label {
     direction: ltr;
 }
 
 .obj_tags {
-    margin: 10px;
+    width: 300px;
+    padding: 10px;
 }
 .obj_tag {
     display: flex;
@@ -409,7 +418,7 @@ body {
     white-space: nowrap;
     color: #fff;
     background-color: #555;    
-    border-radius: 10px 10px 0 0;
+    border-radius: 6px 6px 0 0;
 }
 .dlg_title_text {
     padding-right: 25px; /* room for the close btn */

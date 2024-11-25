@@ -137,8 +137,10 @@ function create_dialog(parent, title, resizable, rect, visible_changed, size_cha
         if (size_changed !== null)
             size_changed()        
     }
-
-    return {elem:dlg, client:client, rect:rect, dset_visible:set_visible, set_title:set_title}
+    rect.elem = dlg
+    rect.client = client
+    rect.set_visible = set_visible
+    return rect
 }
 
 // generic function to handle all cases of dragging some UI element

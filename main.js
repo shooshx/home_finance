@@ -35,6 +35,8 @@ function arr_from_json(ctx, jarr, cls) {
     return arr
 }
 function checkParseAmount(s) {
+    if (s.length == 0)
+        return 0
     const v = parseFloat(s.replace(/[^0-9.-]/g, ''))
     if (isNaN(v))
         throw new Error("value not a number " + s)
@@ -46,8 +48,14 @@ function checkParseInt(s) {
         throw new Error("value not a number " + s)
     return v
 }
+function dequote(s) {
+    return s.replace(/^"(.+)"$/,'$1').replace(/""/g, '"')
+}
 function roundAmount(n) {
     return (Math.round(n * 100)/100).toFixed(2)
+}
+function roundAmountNum(n) {
+    return (Math.round(n * 100)/100)
 }
 function hide(e, v) {
     if (v)
@@ -84,6 +92,7 @@ class Database extends Obj
 
         this.elem = null
         this.accounts_cont_elem = null
+        this.tags_edit_elem = null
     }
     static from_json(ctx, j) {
         const db = new Database(ctx)
@@ -136,7 +145,8 @@ class Database extends Obj
         this.elem = add_div(parent, "period_cont")
         add_div(parent, "periods_standin")
         this.accounts_cont_elem =  add_div(parent, "accounts_cont")
-
+        const dlg = this.show_tags_dlg()
+        
         const p_btns = add_div(this.elem, "period_btns")
         for(const p of this.periods) {
             this.show_period_btn(p_btns, p)
@@ -150,10 +160,16 @@ class Database extends Obj
             save_db()
         }, "sidebar_btn")
         add_push_btn(this.elem, "טגיות", ()=>{
-            this.set_selected(null)
-            this.accounts_cont_elem.innerText = ""
-            this.tags.show(this.accounts_cont_elem)
+            dlg.set_visible(!dlg.visible)
         }, "sidebar_btn")
+    }
+
+    show_tags_dlg() {
+        const rect = {visible:false}
+        const dlg = create_dialog(body, "Tags", false, rect, null)
+        dlg.elem.style.backgroundColor = "#ffffff"
+        this.tags.show(dlg.client)
+        return dlg
     }
 
     show_period_btn(parent, period) {
@@ -427,7 +443,6 @@ class Table extends Obj
             e.show(this.entries_cont_elem)
 
         this.show_footer(this.elem, parent)
-
     }
     hide() {
         if (this.elem === null)
@@ -522,41 +537,46 @@ class Table extends Obj
             this.footer_elems.expected_balance.innerText = this.ctx.amount.value
             // sub-report can be negative but top-level entry can be positive
             const different = (this.get_inconsistency() != 0)
-            hide(this.footer_elems.wrong_cont, !different)
+            hide(this.footer_elems.wrong_cont, !(different && this.size() > 0))
         }
+    }
+    get_relative_sign() {
+        if (this.is_top_level)
+            return 1
+         // total amounts is inverted from expected, need to invert the balances
+        if (Math.sign(this.last_balances.balance) != Math.sign(this.ctx.amount.value))
+            return -1
+        return 1
     }
     get_inconsistency() {
         console.assert(!this.is_top_level, "relevant only for sub-table")
-        const v = Math.abs(Math.abs(this.last_balances.balance) - Math.abs(this.ctx.amount.value))
-        return (v < 0.0099) ? 0 : v
+        const sign = this.get_relative_sign()
+        let v
+        if (sign > 0)
+            v = this.last_balances.balance - this.ctx.amount.value
+        else 
+            v = this.last_balances.balance + this.ctx.amount.value
+        return (Math.abs(v) < 0.0099) ? 0 : v
     }
     trigger_balance() {
-        if (this.is_top_level)
-            this.ctx.trigger_balance()
-        else {
-            // in a sub-table, we are the top level
-            this.update_balance()
-        }
+        this.ctx.trigger_balance()
     }
     update_balance(b = null) {
         if (this.is_top_level)
             console.assert(b !== null)
-        else {
+        else { // balances of sub-table are separete
             console.assert(b === null)
             b = new Balances(0, 0, 0)
         }
+        
         for(const e of this.entries)
             e.update_balance(b)
         this.last_balances = b.clone()
         this.update_footer()
     }
     tags_balance(tb) {
-        let sign = 1
-        if (!this.is_top_level) {
-            // total amounts is inverted from expected, need to invert the balances
-            if (Math.sign(this.last_balances.balance) != Math.sign(this.ctx.amount.value))
-                sign = -1
-        }
+        let sign = this.get_relative_sign()
+
         for(const e of this.entries)
             e.tags_balance(tb, sign)
         if (!this.is_top_level) {
@@ -564,7 +584,7 @@ class Table extends Obj
             // if there's an inconsistency between the sum of the sub-entries and the value of the top-level entry
             // add the diff on -1 tag on the right sign
             if (diff != 0)
-                tb.add_for_tag(null, diff * sign)
+                tb.add_for_tag(null, diff)
         }
     }
 }
@@ -608,7 +628,7 @@ class Entry extends Obj
               {name:"note", disp:"הערה"},
               {name:"balance", disp:"יתרה"}]
 
-    constructor(ctx, date_v, amount_v, bank_desc_v, note_v, tag_id_v) {
+    constructor(ctx, date_v, amount_v, bank_desc_v, note_v, tag_id_v, balance=0) {
         super(ctx)
         this.date = new EntryDateValue(this, "date", date_v)
         this.amount = new EntryNumValue(this, "amount", amount_v)
@@ -619,7 +639,7 @@ class Entry extends Obj
         this.tag = new EntryTagValue(this, tag_id_v)
         this.tag.change_cb = ()=>{ this.trigger_balance() }
         this.breakdown = null // optional Table
-        this.balance = 0 // balance after this transaction
+        this.balance = balance // balance after this transaction
 
         this.fields = [this.date, this.bank_desc, this.amount, this.note, this.tag]
         this.elem = null
@@ -649,6 +669,9 @@ class Entry extends Obj
             d.breakdown = this.breakdown.to_json()
         return d
     }
+    has_breakdown() {
+        return this.breakdown !== null && this.breakdown.size() > 0
+    }
     show(parent) {
         if (this.elem !== null) {
             parent.appendChild(this.elem)
@@ -663,7 +686,7 @@ class Entry extends Obj
             this.expand_btn.addEventListener("click", ()=>{
                 this.show_expanded_breakdown()
             })
-            if (this.breakdown !== null && this.breakdown.size() > 0) {
+            if (this.has_breakdown()) {
                 this.breakdown.show(this.elem)
                 this.expand_btn.setAttribute("checked", true)
             }
@@ -700,7 +723,7 @@ class Entry extends Obj
         }
     }
     update_has_breakdown() {
-        if (this.breakdown !== null && this.breakdown.size() > 0)
+        if (this.has_breakdown())
             this.expand_btn.setAttribute("has_breakdown", true)
         else
             this.expand_btn.removeAttribute("has_breakdown")
@@ -717,13 +740,13 @@ class Entry extends Obj
         else
             b.minus += v
         if (this.breakdown !== null)
-            this.breakdown.trigger_balance() // start a "from the top" on the sub table
+            this.breakdown.update_balance()
     }
     trigger_balance() { // trigger_balance go up the tree
         this.ctx.trigger_balance()
     }
     tags_balance(tb, sign) {
-        if (this.breakdown === null) {
+        if (!this.has_breakdown()) {
             const v = sign * this.amount.value
             tb.add_for_tag(this.tag.tag, v)
         }
@@ -746,7 +769,7 @@ class EntryTextValue extends Obj
         this.input_elem = null
     }
     load_value(v) {
-        this.value = roundAmount(v)
+        this.value = roundAmountNum(v)
         const s = this.to_string(this.value)
         this.input_elem.value = s
         this.set_value_elem(s)
@@ -935,7 +958,7 @@ class TagsEditor extends Obj
             parent.appendChild(this.elem)
             return
         }
-        this.elem = add_div(parent, "obj_tags")
+        this.elem = add_div(parent, ["obj_tags"])
         const tags_elem = add_div(this.elem, "tags_cont")
         for(const t of this.tags)
             t.show(tags_elem)
@@ -1079,23 +1102,10 @@ function parseDate(s, sep="/") {
     try {
         const day = checkParseInt(date_sp[0])
         const monthIndex = checkParseInt(date_sp[1]) - 1
-        const year = checkParseInt(date_sp[2])
+        let year = checkParseInt(date_sp[2])
+        if (year < 100)
+            year += 2000
         return new Date(year, monthIndex, day)
-    }
-    catch(err) {
-        return null
-    }
-}
-
-function parseLeumiDate(date_s) {
-    const date_sp = date_s.split("/")
-    try {
-        if (date_sp.length != 3)
-            throw new Error("Unexpected date format " + date)
-        const day = checkParseInt(date_sp[0])
-        const monthIndex = checkParseInt(date_sp[1]) - 1
-        const year = checkParseInt(date_sp[2]) + 2000
-        const date = new Date(year, monthIndex, day)
     }
     catch(err) {
         return null
@@ -1133,7 +1143,8 @@ function dlg_statement(parent, table)
         const file = ev.dataTransfer.files[0]
         const reader = new FileReader();
         reader.onload = (rdev) => {
-            const in_txt = rdev.target.result;
+            const in_buf = rdev.target.result
+            const in_txt = new TextDecoder("utf-8").decode(in_buf)
             for(const p_cls of g_parser_clss)
                 if (p_cls.identify(in_txt))
                     parser = new p_cls(table)
@@ -1141,9 +1152,9 @@ function dlg_statement(parent, table)
                 console.error("Did not identify file")
                 return
             }
-            txt_elem.value = parser.parse_stmt_file(in_txt)
+            txt_elem.value = parser.parse_stmt_file(in_txt, in_buf)
         };
-        reader.readAsText(file);
+        reader.readAsArrayBuffer(file);
     })
     ed_elem.addEventListener("dragover", (ev)=>{
         
@@ -1153,13 +1164,15 @@ function dlg_statement(parent, table)
 class ParserBase {
     constructor(table) {
         this.table = table
+        this.card_num = null
     }
     add_entries(txt, reverse) {
         const lines = txt.split("\n")
         const entries = []
         for(const line of lines) {
             try {
-                const e = this.parse_line(line)
+                const cells = line.split("|")
+                const e = this.parse_line(cells)
                 if (e)
                     entries.push(e)
             }
@@ -1180,6 +1193,20 @@ class ParserBase {
         }
         save_db()
         this.table.trigger_balance()
+    }
+
+    check_card(card_num) {
+        if (this.card_num === null)
+            this.card_num = card_num
+        else if (this.card_num != card_num)
+            throw new Error("Wrong card " + this.card_num + ", " + card_num)
+    }
+    amount_plus_minus(plus_amount, minus_amount) {
+        if (plus_amount == 0 && minus_amount == 0)
+            throw new Error("line with 0 amount?")
+        if (plus_amount != 0 && minus_amount != 0) 
+            throw new Error("line with 2 amounts?")
+        return plus_amount - minus_amount
     }
 }
 
@@ -1241,24 +1268,17 @@ class ParserLeumiHtml extends ParserBase {
         return s_txt
     }
 
-    parse_line(line) {
-        const cells = line.split("|")
+    parse_line(cells) {
         if (cells.length < 7 || cells[0].length == 0 || isNaN(cells[0].charAt(0)))
             return null // title line
-        const date = parseLeumiDate(cells[0])
+        const date = parseDate(cells[0], '/')
         const bank_desc = cells[2]
         const minus_amount = checkParseAmount(cells[4])
         const plus_amount = checkParseAmount(cells[5])
+        const amount = this.amount_plus_minus(plus_amount, minus_amount)
         const balance = checkParseAmount(cells[6])
-        if (plus_amount == 0 && minus_amount == 0)
-            throw new Error("line with 0 amount?")
-        if (plus_amount != 0 && minus_amount != 0) 
-            throw new Error("line with 2 amounts?")
-
-        const amount = plus_amount - minus_amount
-        const e = new Entry(null, date, amount, bank_desc, "")
-        // temporary, for calculating initial_balance, will be overwritten the first update_balance
-        e.balance = balance 
+        const e = new Entry(null, date, amount, bank_desc, "", null, balance)
+        // balance is temporary, for calculating initial_balance, will be overwritten the first update_balance
         return e
     }
     add_entries(txt) {
@@ -1266,11 +1286,36 @@ class ParserLeumiHtml extends ParserBase {
     }
 }
 
-class ParserMaxSheet extends ParserBase
+class MaxEntrier extends ParserBase
+{
+    parse_line(cells) {
+        if (cells.length < 10 || isNaN(cells[0].charAt(0)) || cells[0].split('-').length != 3)
+            return null
+        const date = parseDate(cells[0], "-")
+        const bank_desc = cells[1]
+        const card_num = cells[3]
+        this.check_card(card_num)
+        const amount_s = cells[5]
+        const amount = checkParseAmount(amount_s)
+        const total_amount_s = cells[7]
+        const total_ccy = cells[8]
+        let note = ""
+        if (cells.length > 10)
+            note = dequote(cells[10])
+        if (amount_s != total_amount_s)
+            note += "(" + total_amount_s + total_ccy + ")"
+        const e = new Entry(null, date, amount, bank_desc, note, null, 0)
+        return e
+    }
+    add_entries(txt) {
+        super.add_entries(txt, false)
+    }
+}
+
+class ParserMaxSheet extends MaxEntrier
 {
     constructor(table) {
         super(table)
-        this.card_num = null
     }
     static identify(txt) {
         return txt.startsWith("<?xml") && txt.includes("spreadsheetml")
@@ -1300,36 +1345,89 @@ class ParserMaxSheet extends ParserBase
         rec_parse(doc.documentElement);
         return s_txt
     }
+}
 
-    parse_line(line) {
-        const cells = line.split("|")
-        if (cells.length < 10 || isNaN(cells[0].charAt(0)))
+class PoalimEntrier extends ParserBase
+{
+    parse_line(cells) {
+        if (cells.length < 9 || isNaN(cells[0].charAt(0)))
             return null
-        const date = parseDate(cells[0], "-")
+        const date = parseDate(cells[0], '/')
         const bank_desc = cells[1]
-        const card_num = cells[3]
-        if (this.card_num === null)
-            this.card_num = card_num
-        else if (this.card_num != card_num)
-            throw new Error("Wrong card " + this.card_num + ", " + card_num)
-        const amount_s = cells[5]
-        const amount = checkParseAmount(amount_s)
-        const total_amount_s = cells[7]
-        let note = ""
-        if (cells.length > 10)
-            note = cells[10]
-        if (amount_s != total_amount_s)
-            note += "(" + total_amount_s + ")"
-        const e = new Entry(null, date, amount, bank_desc, note)
+        const plus_amount = checkParseAmount(cells[5])
+        const minus_amount = checkParseAmount(cells[4])
+        const amount = this.amount_plus_minus(plus_amount, minus_amount)
+        const note = cells[2]
+        const balance = checkParseAmount(cells[6])
+        const e = new Entry(null, date, amount, bank_desc, note, null, balance)
         return e
     }
+    add_entries(txt) {
+        super.add_entries(txt, true)
+    }
+}
 
+class MasterCardEntrier extends ParserBase
+{
+    parse_line(cells) {
+        if (cells.length < 7 || cells[1].split('/').length != 3)
+            return null
+        this.check_card(cells[0])
+        const date = parseDate(cells[2], '/')
+        const bank_desc = dequote(cells[3])
+        const amount = checkParseAmount(cells[5])
+        const e = new Entry(null, date, amount, bank_desc, "", null, 0)
+        return e
+    }
     add_entries(txt) {
         super.add_entries(txt, false)
     }
 }
 
-const g_parser_clss = [ParserLeumiHtml, ParserMaxSheet]
+class XlsxParser extends ParserBase
+{
+    constructor(table) {
+        super(table)
+        this.card_num = null
+        this.entryer = null
+    }
+    static identify(txt) {
+        return txt.startsWith("PK")
+    }
+    parse_stmt_file(in_txt, in_buf) {
+        const workbook = XLSX.read(in_buf, {cellDates:true})
+        if (!workbook)
+            return "Failed reading"
+
+        let s_txt = ""
+        for(const sheet_name in workbook.Sheets) {
+            const sheet = workbook.Sheets[sheet_name]
+            const txt = XLSX.utils.sheet_to_csv(sheet, {FS:'|', dateNF:"dd/mm/yyyy"})
+            s_txt += txt
+        }
+        if (workbook.Props && workbook.Props.Company == "Bank Hapoalim") {
+            if (s_txt.includes("שם כרטיס"))
+                this.entryer = new MasterCardEntrier(this.table)
+            else if (s_txt.includes("תנועות בחשבון"))
+                this.entryer = new PoalimEntrier(this.table)
+            else
+                return "Unknown Hapoalim producer"
+        }
+        else if (workbook.Props && workbook.Props.Application == "SheetJS")
+            this.entryer = new MaxEntrier(this.table)
+        else 
+            return "Unknown Excel producer"
+        return s_txt
+    }
+    add_entries(txt) {
+        if (this.entryer === null)
+            return
+        this.entryer.add_entries(txt)
+    }
+}
+
+
+const g_parser_clss = [ParserLeumiHtml, ParserMaxSheet, XlsxParser]
 
 
 
