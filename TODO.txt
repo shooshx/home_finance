@@ -2,3 +2,4 @@
 - change order of accounts, tags
 - accounts should be expanded and contracted
 - new period copies accounts
+- export/import

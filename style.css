@@ -40,7 +40,7 @@ body {
     padding: 5px 0 0 5px;
     margin-bottom: 10px;
     max-width: 1100px;
-    margin: 0 auto 0 auto;
+    margin: 0 auto 5px auto;
 }
 .account_title {
     font-size: 20px;
@@ -187,6 +187,7 @@ body {
     font-size: 20px;
     font-weight: bold;
     background-color: #d4d4d4;
+    height: 24px;
 }
 
 .period_selector {
@@ -306,7 +307,7 @@ body {
     border-radius: 4px;
     padding-bottom: 1px;
 }
-.tag_value {
+.tag_value { /* in entry line */
     flex-basis: 140px;
     padding: 0 5px;
     box-sizing: border-box;
@@ -327,6 +328,61 @@ body {
 .tag_menu_label {
     margin-bottom: 5px;
     padding: 0 5px;
+}
+
+.summary_cont {
+    display: flex;
+    padding: 0 40px 20px 20px;
+}
+.sum_col {
+    flex-grow: 1;
+    font-size: 19px;
+}
+.tb_col {
+    flex-basis: 400px;
+}
+.sum_line {
+    display: flex;
+}
+.sum_label {
+    flex-basis: 200px;
+}
+.sum_value {
+    flex-grow: 1;
+}
+.sum_lbl_tplus, .sum_val_tplus {
+    color: #b60000;
+}
+.sum_lbl_tminus, .sum_val_tminus {
+    color: #008900;
+}
+.sum_lbl_tplus, .sum_lbl_tminus {
+    margin-right: 20px;
+    /*flex-basis: 180px;*/
+}
+.tb_line {
+    display: flex;
+    margin: 2px 0 2px 0;
+}
+.tb_tag_wrap {
+    flex-basis: 150px;
+    width: fit-content;
+}
+.tb_value {
+    flex-basis: 120px;
+    font-size: 18px;
+}
+.tb_sep {
+    border-top: 1px #838383 dashed;
+    max-width: 400px;
+}
+.tag {
+    border-radius: 4px;
+    padding: 0 5px 1px 5px;
+    width: fit-content;
+}
+.tag[tag_id="-1"]::after {
+    content: "<כלום>";
 }
 
 

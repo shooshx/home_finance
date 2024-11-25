@@ -179,6 +179,7 @@ class Period extends Obj
         this.elem = null
         this.accounts_elem = null
         this.side_btn_elems = null
+        this.summary_elems = null
     }
     static from_json(ctx, j) {
         const p  = new Period(ctx, j.name)
@@ -202,6 +203,7 @@ class Period extends Obj
                 {text:"לא"}, {text:"כן", func:()=>{ this.ctx.remove_period(this) }}])
         })
         this.accounts_elem = add_div(this.elem, "period_accounts")
+        this.show_summary(this.accounts_elem)
         for(const a of this.accounts) {
             a.show(this.accounts_elem)
         }
@@ -218,6 +220,94 @@ class Period extends Obj
         this.accounts_elem.removeChild(account.elem)
         save_db()
     }
+
+    show_summary(parent) {
+        const summary_cont = add_div(parent, "obj_account")
+        const title_elem = add_div(summary_cont, "account_title")
+        title_elem.innerText = "סיכום"
+        const columns_cont = add_div(summary_cont, "summary_cont")
+        const col_right = add_div(columns_cont, "sum_col")
+        const col_left = add_div(columns_cont, "tb_col")
+
+        const add_line = (label, cls_suffix="")=>{
+            const line = add_div(col_right, "sum_line")
+            add_div(line, ["sum_label", "sum_lbl_" + cls_suffix]).innerText = label
+            const num = add_div(line, ["number_label", "sum_value", "sum_val_" + cls_suffix])
+            num.innerText = 0
+            num.value = 0
+            return { num:num, add: (v)=>{ 
+                num.value += v
+                num.innerText = roundAmount(num.value)
+            }, reset: ()=>{
+                num.value = 0
+                num.innerText = roundAmount(num.value)
+            }}
+        }
+        const d = {}
+        d.initial_balance = add_line("ייתרה התחלתית:")
+        d.total = add_line("תזרים:")
+        d.total_plus = add_line("הכנסות:", "tplus")
+        d.total_minus = add_line("הוצאות:", "tminus")
+        d.end_balance = add_line("ייתרה סופית:")
+        d.col_left = col_left
+        this.summary_elems = d
+
+        this.update_summary()
+    }
+    update_summary() {
+        const d = this.summary_elems
+        if (d === null)
+            return
+        for(const n in d)
+            if (d[n].num !== undefined)
+                d[n].reset()
+        const tb = new TagsBalances()
+        for(const ac of this.accounts) {
+            d.initial_balance.add(ac.initial_balance.amount.value)
+            d.end_balance.add(ac.table.last_balances.balance)
+            d.total_plus.add(ac.table.last_balances.plus)
+            d.total_minus.add(ac.table.last_balances.minus)
+            d.total.add(ac.table.last_balances.plus + ac.table.last_balances.minus)
+            ac.table.tags_balance(tb)
+        }
+        // per-tag table
+        const tb_lst = Object.values(tb.id_to_balance)
+        tb_lst.sort((a, b)=>{ return b.magnitude() - a.magnitude() })
+        d.col_left.innerText = ""
+        for(const b of tb_lst) {
+            const line = add_div(d.col_left, "tb_line")
+            add_div(d.col_left, "tb_sep")
+            const tag_wrap = add_div(line, "tb_tag_wrap")
+            const tag_elem = add_div(tag_wrap)
+            Tag.emplace(b.tag, tag_elem, true)
+            const value1 = add_div(line, ["number_label", "tb_value"])
+            if (b.plus == 0 || b.minus == 0) {
+                value1.innerText = roundAmount(b.plus + b.minus)
+            }
+            else {
+                const value2 = add_div(line, ["number_label", "tb_value"])
+                value1.innerText = roundAmount(b.plus)
+                value2.innerText = roundAmount(b.minus)
+            }
+        }
+    }
+}
+
+class TagsBalances {
+    constructor() {
+        this.id_to_balance = {}
+    }
+    add_for_tag(tag, v) {
+        const id = Tag.get_id(tag)
+        let b = this.id_to_balance[id]
+        if (b === undefined)
+            b = this.id_to_balance[id] = new TagBalances(tag)
+        if (v < 0)
+            b.minus += v
+        else
+            b.plus += v
+        b.balance += v
+    }
 }
 
 class Balances {
@@ -228,6 +318,15 @@ class Balances {
     }
     clone() {
         return new Balances(this.balance, this.plus, this.minus)
+    }
+    magnitude() {
+        return Math.abs(this.plus) + Math.abs(this.minus)
+    }
+}
+class TagBalances extends Balances {
+    constructor(tag) {
+        super(0, 0, 0)
+        this.tag = tag
     }
 }
 
@@ -272,6 +371,7 @@ class Account extends Obj
     }
     trigger_balance() {
         this.table.update_balance(new Balances(this.initial_balance.amount.value, 0, 0))
+        this.ctx.update_summary()
     }
 } 
 
@@ -419,12 +519,16 @@ class Table extends Obj
             this.footer_elems.total.innerText = roundAmount(this.last_balances.plus + this.last_balances.minus)
         }
         else {
-            const expected_balance = this.ctx.amount.value
-            this.footer_elems.expected_balance.innerText = expected_balance
+            this.footer_elems.expected_balance.innerText = this.ctx.amount.value
             // sub-report can be negative but top-level entry can be positive
-            const different = (Math.abs(Math.abs(this.last_balances.balance) - Math.abs(expected_balance)) >= 0.0099)
+            const different = (this.get_inconsistency() != 0)
             hide(this.footer_elems.wrong_cont, !different)
         }
+    }
+    get_inconsistency() {
+        console.assert(!this.is_top_level, "relevant only for sub-table")
+        const v = Math.abs(Math.abs(this.last_balances.balance) - Math.abs(this.ctx.amount.value))
+        return (v < 0.0099) ? 0 : v
     }
     trigger_balance() {
         if (this.is_top_level)
@@ -445,6 +549,23 @@ class Table extends Obj
             e.update_balance(b)
         this.last_balances = b.clone()
         this.update_footer()
+    }
+    tags_balance(tb) {
+        let sign = 1
+        if (!this.is_top_level) {
+            // total amounts is inverted from expected, need to invert the balances
+            if (Math.sign(this.last_balances.balance) != Math.sign(this.ctx.amount.value))
+                sign = -1
+        }
+        for(const e of this.entries)
+            e.tags_balance(tb, sign)
+        if (!this.is_top_level) {
+            const diff = this.get_inconsistency()
+            // if there's an inconsistency between the sum of the sub-entries and the value of the top-level entry
+            // add the diff on -1 tag on the right sign
+            if (diff != 0)
+                tb.add_for_tag(null, diff * sign)
+        }
     }
 }
 
@@ -496,6 +617,7 @@ class Entry extends Obj
         this.bank_desc = new EntryBidiTextValue(this, "bank_desc", bank_desc_v)
         this.note = new EntryTextValue(this, "note", note_v)
         this.tag = new EntryTagValue(this, tag_id_v)
+        this.tag.change_cb = ()=>{ this.trigger_balance() }
         this.breakdown = null // optional Table
         this.balance = 0 // balance after this transaction
 
@@ -599,6 +721,15 @@ class Entry extends Obj
     }
     trigger_balance() { // trigger_balance go up the tree
         this.ctx.trigger_balance()
+    }
+    tags_balance(tb, sign) {
+        if (this.breakdown === null) {
+            const v = sign * this.amount.value
+            tb.add_for_tag(this.tag.tag, v)
+        }
+        else {
+            this.breakdown.tags_balance(tb, sign)
+        }
     }
 }
 
@@ -737,24 +868,16 @@ class EntryTagValue extends Obj {
             return
         }
         this.elem = add_div(parent, ["tag_value", "obj_txt_val"])
-        //const label = add_div(this.elem, "tag_value")
-        if (this.tag)
-            this.tag.emplace(this.elem)
-        else
-            Tag.emplace_null(this.elem)
+        Tag.emplace(this.tag, this.elem)
 
         this.elem.addEventListener("click", (ev)=>{
             ev.stopPropagation() // prevent the document handler from dismissing the menu
             g_db.tags.tags_menu(this.elem, (tag)=>{
                 this.tag = tag
-                if (tag !== null) {
-                    this.tag_id = tag.id
-                    this.tag.emplace(this.elem)
-                }
-                else {
-                    this.tag_id = -1
-                    Tag.emplace_null(this.elem)
-                }
+                this.tag_id = Tag.get_id(tag)
+                Tag.emplace(tag, this.elem)
+                if (this.change_cb)
+                    this.change_cb(this.value)
                 save_db()
             })
         })
@@ -828,12 +951,12 @@ class TagsEditor extends Obj
     }
     create_tags_menu() {
         this.tags_menu_elem = add_div(body, ["tags_menu", "hidden"])
-        const none_lbl = add_div(this.tags_menu_elem, ["obj_val_val_tag", "tag_menu_label", "tag_value_has"])
-        none_lbl.innerText = "<כלום>"
+        const none_lbl = add_div(this.tags_menu_elem, ["obj_val_val_tag", "tag_menu_label"])
+        Tag.emplace(null, none_lbl, true)
         none_lbl.addEventListener("click", ()=>{ this.tags_menu_elem.select_cb(null) })
         for(const t of this.tags) {
-            const lbl = add_div(this.tags_menu_elem, ["obj_val_val_tag", "tag_menu_label", "tag_value_has"])
-            t.emplace(lbl)
+            const lbl = add_div(this.tags_menu_elem, ["obj_val_val_tag", "tag_menu_label"])
+            Tag.emplace(t, lbl)
             lbl.addEventListener("click", (ev)=>{ this.tags_menu_elem.select_cb(t) })
         }
         document.addEventListener("click", ()=>{
@@ -882,14 +1005,26 @@ class Tag extends Obj
     to_json() {
         return { value: this.value.value, color: this.color, id: this.id }
     }
-    emplace(e) {
+    static emplace(tag, e, mark_none=false) {
         e.classList.add("tag")
-        e.classList.add("tag_value_has")
-        e.setAttribute("tag_id", this.id)
+        if (tag !== null) {
+            e.classList.add("tag_value_has")
+            e.setAttribute("tag_id", tag.id)
+        }
+        else {
+            if (mark_none) { // entry don't want this
+                e.setAttribute("tag_id", -1)
+                e.classList.add("tag_value_has")
+            }
+            else {
+                e.removeAttribute("tag_id")
+                e.classList.remove("tag_value_has")
+            }
+        }
     }
-    static emplace_null(e) {
-        e.removeAttribute("tag_id")
-        e.classList.remove("tag_value_has")
+
+    static get_id(tag) {
+        return (tag !== null) ? tag.id : -1 
     }
 
     update_css() {
@@ -897,14 +1032,14 @@ class Tag extends Obj
         this.css_rule.style.color = this.text_color
         this.css_content_rule.style.content = '"' + this.value.value + '"'
     }
-    show(parent) {
+    show(parent) { // in editor
         if (this.elem !== null) {
             parent.appendChild(this.elem)
             return
         }
         this.elem = add_div(parent, "obj_tag", "tag")
         this.value.show(this.elem)
-        this.emplace(this.value.value_elem)
+        Tag.emplace(this, this.value.value_elem)
         const color_edit = add_elem(this.elem, "input", "tag_color")
         ColorEditBox.create_at(color_edit, 150, (c)=>{
             this.color = c.hex
