@@ -663,15 +663,15 @@ function create_at(edit_elem, sz, onchange, options, start_value)
     if (options.open_pos === OPEN_POS_LEFTOF_BOTTOM_LEFT) {
         position_to_edit_elem = ()=>{
             let ed_rect = edit_elem.getBoundingClientRect()
-            picker.elem.style.top = ed_rect.bottom - sz + "px"
-            picker.elem.style.left = ed_rect.right + window.scrollX + 2 + "px"
+            picker.elem.style.top = ed_rect.bottom /*+ window.scrollY*/ - sz + "px"
+            picker.elem.style.left = ed_rect.right /*+ window.scrollX*/ + 2 + "px"
         }
     }
     else { // where to open the picker, default, top-left corner is below element
         position_to_edit_elem = ()=>{
             let ed_rect = edit_elem.getBoundingClientRect()
-            picker.elem.style.top = ed_rect.bottom + window.scrollY + 2 + "px"
-            picker.elem.style.left = ed_rect.left + window.scrollX + "px"
+            picker.elem.style.top = ed_rect.bottom /*+ window.scrollY*/ + 2 + "px"
+            picker.elem.style.left = ed_rect.left /*+ window.scrollX*/ + "px"
         }
     }
 

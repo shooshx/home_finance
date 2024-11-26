@@ -1,3 +1,10 @@
+
+@font-face {
+    font-family: 'inter';
+    src: url('fonts/Inter-VariableFont_opsz,wght.ttf') format('truetype')
+}
+
+
 body {
     font-family: Tahoma;
     user-select: none;
@@ -9,7 +16,7 @@ body {
 }
 
 .periods_standin { /* added to the flex since the period_cont is fixed */
-    flex-basis: 150px;
+    flex-basis: 160px;
 }
 
 .period_cont {
@@ -19,7 +26,7 @@ body {
     position: fixed;
     top: 0;
     right: 0;
-    width: 150px;
+    width: 160px;
 }
 .period_title {
     background-color: #afaffe;
@@ -222,15 +229,24 @@ body {
 }
 
 .number_label {
-    font-family: courier;
-    font-weight: bold;
+    font-family: 'inter';
+    font-weight: 500;
     direction: ltr;
     text-align: right;
     padding-top: 2px;
+    height: 19px;
+    line-height: 18px;
+    font-variant-numeric: tabular-nums; /* make it a tabular font */
+}
+.number_label[col="plus"] {
+    color: #017901;
+}
+.number_label[col="minus"] {
+    color: #a90000;
 }
 .number_edit {
-    font-family: courier;
-    font-weight: bold;
+    font-family: 'inter';
+    font-weight: 500;
     direction: ltr;
 }
 
@@ -267,7 +283,6 @@ body {
     background: #89f3ff;
     margin-left: 27px;
     border: 1px solid #555;
-    user-select: all;
 }
 .table_btns {
     display: flex;
@@ -288,6 +303,9 @@ body {
 }
 .wrong_label {
     direction: ltr;
+}
+.wrong_diff {
+    padding: 2px 0 0 0;
 }
 .sum_wrongs {
     background-color: #f87272;
@@ -327,10 +345,12 @@ body {
     padding-bottom: 1px;
 }
 .tag_value { /* in entry line */
-    flex-basis: 140px;
     padding: 0 5px;
     box-sizing: border-box;
     line-height: 19px;
+}
+.tag_value, .obj_val_hdr_tag {
+    flex-basis: 140px;
 }
 .tag_value_has {
     border: 1px solid #818181;
@@ -401,7 +421,7 @@ body {
     width: fit-content;
 }
 .tag[tag_id="-1"]::after {
-    content: "<כלום>";
+    content: "<שונות>";
 }
 .tag_strs {
     margin: 5px 10px 0 5px;
@@ -615,4 +635,7 @@ body {
 }
 .sidebar_btn {
     margin-top: 5px;
+}
+.selectable {
+    user-select: all;
 }

@@ -1,9 +1,17 @@
 
-- summary notice about inconsistent balance
+
 - change order of accounts, tags
-- accounts should be expanded and contracted
 - new period copies accounts
 - export/import
 
+
 - multi-period summary
     - validate start is as finish
+- drag border between fields in entry
+
+
+ 
+ - gray out tag for broken down
+ - better font, with thousands comma
+
+

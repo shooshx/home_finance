@@ -51,8 +51,25 @@ function checkParseInt(s) {
 function dequote(s) {
     return s.replace(/^"(.+)"$/,'$1').replace(/""/g, '"')
 }
-function roundAmount(n) {
-    return (Math.round(n * 100)/100).toFixed(2)
+function insertCommas(s) {
+    const d = s.indexOf('.');
+    let s2 = d === -1 ? s : s.slice(0, d);
+    let sign = null
+    if (s2[0] == '-' || s2[0] == '+') {
+        sign = s2.slice(0, 1)
+        s2 = s2.slice(1)
+    }
+    for (let i = s2.length - 3; i > 0; i -= 3)
+        s2 = s2.slice(0, i) + ',' + s2.slice(i);
+    if (d !== -1)
+        s2 += s.slice(d);
+    if (sign !== null)
+        s2 = sign + s2
+    return s2;
+
+  }
+function roundAmount(n) {    
+    return insertCommas( (Math.round(n * 100)/100).toFixed(2) )
 }
 function roundAmountNum(n) {
     return (Math.round(n * 100)/100)
@@ -303,14 +320,14 @@ class Period extends Obj
             const tag_elem = add_div(tag_wrap)
             Tag.emplace(b.tag, tag_elem, true)
             const value1 = add_div(line, ["number_label", "tb_value"])
-            if (b.plus == 0 || b.minus == 0) {
-                value1.innerText = roundAmount(b.plus + b.minus)
-            }
-            else {
-                const value2 = add_div(line, ["number_label", "tb_value"])
-                value1.innerText = roundAmount(b.plus)
-                value2.innerText = roundAmount(b.minus)
-            }
+            set_value_color(value1, b.balance)
+            value1.innerText = roundAmount(b.balance)
+
+
+            /*const value2 = add_div(line, ["number_label", "tb_value"])
+            value1.innerText = roundAmount(b.plus)
+            value2.innerText = roundAmount(b.minus)
+            */
         }
     }
 }
@@ -343,7 +360,7 @@ class Balances {
         return new Balances(this.balance, this.plus, this.minus, this.has_wrong_balance)
     }
     magnitude() {
-        return Math.abs(this.plus) + Math.abs(this.minus)
+        return Math.abs(this.balance)
     }
 }
 class TagBalances extends Balances {
@@ -500,9 +517,12 @@ class Table extends Obj
             const sp = add_div(btns_line, "table_btns_spacer")
             const wrong_cont = add_div(btns_line, "wrong_cont")
             add_div(wrong_cont, "wrong_label").innerText = ":ייתרה שגויה"
-            const expected_balance = add_div(wrong_cont, ["obj_val_value", "expected_balance", "number_label"])
-            const balance = add_div(btns_line, ["obj_val_value", "table_footer_balance", "number_label"])
-            this.footer_elems = { balance:balance, wrong_cont:wrong_cont, expected_balance:expected_balance }
+            const expected_balance = add_div(wrong_cont, ["obj_val_value", "number_label"])
+            add_div(wrong_cont, "").innerText = "("
+            const wrong_diff = add_div(wrong_cont, ["obj_val_value", "number_label", "selectable", "wrong_diff"])
+            add_div(wrong_cont, "").innerText = ")"
+            const balance = add_div(btns_line, ["obj_val_value", "table_footer_balance", "number_label", "selectable"])
+            this.footer_elems = { balance:balance, wrong_cont:wrong_cont, expected_balance:expected_balance, wrong_diff: wrong_diff }
         }
         this.update_footer()
     }
@@ -543,8 +563,9 @@ class Table extends Obj
         else {
             this.footer_elems.expected_balance.innerText = this.ctx.amount.value
             // sub-report can be negative but top-level entry can be positive
-            const different = (this.get_inconsistency() != 0)
-            hide(this.footer_elems.wrong_cont, !(different && this.size() > 0))
+            const diff = this.get_inconsistency()
+            this.footer_elems.wrong_diff.innerText = roundAmount(diff)
+            hide(this.footer_elems.wrong_cont, !((diff != 0) && this.size() > 0))
         }
     }
     get_relative_sign() {
@@ -632,13 +653,14 @@ class Entry extends Obj
     static FIELDS = [{name:"date", disp:"תאריך"}, 
               {name:"bank_desc", disp:"תיאור מהבנק"}, 
               {name:"amount", disp:"סכום"}, 
+              {name:"tag", disp:"טאג"}, 
               {name:"note", disp:"הערה"},
               {name:"balance", disp:"יתרה"}]
 
     constructor(ctx, date_v, amount_v, bank_desc_v, note_v, tag_id_v, balance=0) {
         super(ctx)
         this.date = new EntryDateValue(this, "date", date_v)
-        this.amount = new EntryNumValue(this, "amount", amount_v)
+        this.amount = new EntryNumValue(this, "amount", amount_v, true)
         this.amount.change_cb = ()=>{ this.trigger_balance() }
         this.category = null
         this.bank_desc = new EntryBidiTextValue(this, "bank_desc", bank_desc_v)
@@ -648,7 +670,7 @@ class Entry extends Obj
         this.breakdown = null // optional Table
         this.balance = balance // balance after this transaction
 
-        this.fields = [this.date, this.bank_desc, this.amount, this.note, this.tag]
+        this.fields = [this.date, this.bank_desc, this.amount, this.tag, this.note]
         this.elem = null
         this.balance_elem = null
         this.expand_btn = null
@@ -826,8 +848,9 @@ class EntryTextValue extends Obj
 }
 
 class EntryNumValue extends EntryTextValue {
-    constructor(ctx, name, value) {
+    constructor(ctx, name, value, color_by_value=false) {
         super(ctx, name, value)
+        this.color_by_value = color_by_value
     }
     from_string(v) {
         if (v.length == 0)
@@ -841,8 +864,21 @@ class EntryNumValue extends EntryTextValue {
     show(parent) {
         super.show(parent)
         this.value_elem.classList.add("number_label")
+        if (this.color_by_value) {
+            const sign = this.ctx.ctx.get_relative_sign()
+            set_value_color(this.value_elem, this.value * sign)
+        }
         this.input_elem.classList.add("number_edit")
     }
+}
+
+function set_value_color(e, v) {
+    let cs = ""
+    if (v > 0)
+        cs = "plus"
+    if (v < 0)
+        cs = "minus"
+    e.setAttribute("col", cs)
 }
 
 class EntryDateValue extends EntryTextValue {
@@ -991,7 +1027,7 @@ class TagsEditor extends Obj
             this.create_tags_menu()
         hide(this.tags_menu_elem, false)
         const rect = parent.getBoundingClientRect()
-        this.tags_menu_elem.style.top = rect.top + "px"
+        this.tags_menu_elem.style.top = rect.top + window.scrollY + "px"
         this.tags_menu_elem.style.left = rect.left + "px"
         this.tags_menu_elem.select_cb = (tag)=>{
             select_cb(tag)
@@ -1418,7 +1454,7 @@ class PoalimEntrier extends ParserBase
         if (cells.length < 9 || isNaN(cells[0].charAt(0)))
             return null
         const date = parseDate(cells[0], '/')
-        const bank_desc = cells[1]
+        const bank_desc = dequote(cells[1])
         const plus_amount = checkParseAmount(cells[5])
         const minus_amount = checkParseAmount(cells[4])
         const amount = this.amount_plus_minus(plus_amount, minus_amount)
