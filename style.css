@@ -65,7 +65,7 @@ body {
     background: #98c6f6;
     margin-right: 50px;
     margin-left: 80px;
-    padding: 5px 0 5px 0;
+    padding: 5px 0 5px 7px;
 }
 .table_header {
     display: flex;
@@ -82,7 +82,7 @@ body {
 }
 .obj_balance_entry {
     border-radius: 4px;
-    margin: 0 10px 0 25px;
+    margin: 0 10px 0 0px;
     display: flex;
 }
 .entry_remove {
@@ -95,6 +95,9 @@ body {
     background-repeat: no-repeat;
     cursor: auto;
     min-width: 24px;
+}
+.modify_visible {
+    display:none;
 }
 .entry_remove:hover {
     background-image: url(img/red_ex.png)
@@ -114,7 +117,20 @@ body {
 .entry_expand[checked] {
     background-image: url(img/gray_minus.png);
 }
-
+.entry_move_up {
+    background-image: url(img/gray_up_arrow.png);
+    width: 19px;
+    height: 19px;
+    background-repeat: no-repeat;
+    margin: 0 0 0 2px;
+}
+.entry_move_down {
+    background-image: url(img/gray_down_arrow.png);
+    width: 19px;
+    height: 19px;
+    background-repeat: no-repeat;
+    margin: 0 0 0 2px;
+}
 
 .entry_balance {
     flex-basis: 100px;
@@ -180,7 +196,7 @@ body {
 }
 .obj_val_note, .obj_val_hdr_note {
     flex-grow: 1;
-    max-width: 375px; /* so that it doesn't grow over others*/
+    max-width: 398px; /* so that it doesn't grow over others*/
 }
 .obj_val_init_balance {
     flex-grow: 0;
@@ -199,6 +215,9 @@ body {
     font-weight: bold;
     background-color: #d4d4d4;
     height: 24px;
+}
+.obj_val_inp_date {
+    direction: ltr; /* easier to write date like that */
 }
 
 .period_selector {
@@ -281,7 +300,6 @@ body {
     margin: 0 0 3px 3px;
     border-radius: 4px;
     background: #89f3ff;
-    margin-left: 27px;
     border: 1px solid #555;
 }
 .table_btns {
@@ -313,6 +331,12 @@ body {
     width: fit-content;
     padding: 2px 10px 4px 10px;
     margin-top: 10px;
+}
+.init_warn {
+    background-color: #f87272;
+    padding: 0 7px;
+    border-radius: 5px;
+    margin: 0 0 2px 5px;
 }
 
 .obj_tags {
@@ -635,6 +659,10 @@ body {
 }
 .sidebar_btn {
     margin-top: 5px;
+}
+.sidebar_btn_short {
+    margin-top: 5px;
+    min-width: 45px;
 }
 .selectable {
     user-select: all;

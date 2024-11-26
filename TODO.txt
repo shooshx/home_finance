@@ -1,17 +1,18 @@
 
 
-- change order of accounts, tags
-- new period copies accounts
-- export/import
 
+- change order of accounts, tags
+- pie chart for expense
+
+- button to unexpand everything, remember state
 
 - multi-period summary
-    - validate start is as finish
+
 - drag border between fields in entry
+- find by tag? Ctrl+F
+
+ - gray out tag for broken down ones
 
 
- 
- - gray out tag for broken down
- - better font, with thousands comma
 
 

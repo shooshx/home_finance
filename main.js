@@ -7,14 +7,17 @@ function save_db() {
     const json_s = JSON.stringify(json)
     localStorage.setItem("db", json_s)
 }
-function load_db() {
-    const json_s = localStorage.getItem("db")
+function load_db(json_s=null) {
+    if (json_s == null)
+        json_s = localStorage.getItem("db")
     if (json_s === null)
-        return
+        return false
     const json = JSON.parse(json_s)
     if (json === null)
-        return
-    g_db = Database.from_json(null, json)
+        return false
+    Database.from_json(null, json)
+    g_db.from_json_integrate()
+    return true
 }
 
 
@@ -42,6 +45,9 @@ function checkParseAmount(s) {
         throw new Error("value not a number " + s)
     return v
 }
+function parseEditFloat(s) {
+    return parseFloat(s.replace(",", ""))
+}
 function checkParseInt(s) {
     const v = parseFloat(s)
     if (isNaN(v))
@@ -49,6 +55,7 @@ function checkParseInt(s) {
     return v
 }
 function dequote(s) {
+    // remove quote from start and end and change double quotes in the middle to single
     return s.replace(/^"(.+)"$/,'$1').replace(/""/g, '"')
 }
 function insertCommas(s) {
@@ -67,7 +74,10 @@ function insertCommas(s) {
         s2 = sign + s2
     return s2;
 
-  }
+}
+function almost_zero(v) {
+    return Math.abs(v) < 0.0099 // less that 1 agora
+}
 function roundAmount(n) {    
     return insertCommas( (Math.round(n * 100)/100).toFixed(2) )
 }
@@ -83,12 +93,24 @@ function hide(e, v) {
 function removeElem(e) {
     e.parentElement.removeChild(e)
 }
+function find_css(selector) {
+    for(const rule of document.styleSheets[0].cssRules) {
+        if (rule.selectorText == selector)
+            return rule
+    }
+    return null
+}
 
 class Obj
 {
     constructor(ctx) {
         this.ctx = ctx
         this.elem = null
+    }
+
+    // this is called after the object is added to the db when loading from json
+    // - in the case of Account, used for reding from previous period
+    from_json_integrate() {
     }
 
     invalidate() {
@@ -110,6 +132,9 @@ class Database extends Obj
         this.elem = null
         this.accounts_cont_elem = null
         this.tags_edit_elem = null
+        this.mod_vis_css = find_css(".modify_visible")
+        this.export_a_elem = null
+        this.import_in_elem = null
     }
     static from_json(ctx, j) {
         const db = new Database(ctx)
@@ -119,6 +144,10 @@ class Database extends Obj
         if (j.selected_period_idx)
             db.selected_period_idx = j.selected_period_idx
         return db
+    }
+    from_json_integrate() {
+        for(const p of this.periods)
+            p.from_json_integrate()
     }
     to_json() {
         return { periods: arr_to_json(this.periods), 
@@ -155,6 +184,12 @@ class Database extends Obj
         const period = this.selected_period()
         period.show(this.accounts_cont_elem)
     }
+    get_prev_period(period) {
+        const idx = this.periods.indexOf(period)
+        if (idx == 0)
+            return null
+        return this.periods[idx - 1]
+    }
 
     // called once on startup
     show(parent) 
@@ -176,9 +211,26 @@ class Database extends Obj
             this.set_selected(p)
             save_db()
         }, "sidebar_btn")
-        add_push_btn(this.elem, "טגיות", ()=>{
-            dlg.set_visible(!dlg.visible)
+        add_push_btn(this.elem, "טגיות", ()=>{ dlg.set_visible(!dlg.visible) }, "sidebar_btn")
+        add_push_btn(this.elem, "עריכה", ()=>{
+            if (this.mod_vis_css.style.display == "initial")
+                this.mod_vis_css.style.display = "none"
+            else
+                this.mod_vis_css.style.display = "initial"
         }, "sidebar_btn")
+
+        add_push_btn(this.elem, "יצא", ()=>{ this.export() }, "sidebar_btn_short")
+        this.export_a_elem = add_elem(this.elem, "a", "hidden")
+        
+        const import_btn = add_elem(this.elem, "label", ["param_btn", "sidebar_btn_short"])
+        import_btn.innerText = "יבא"
+        this.import_in_elem = add_elem(this.elem, "input", "hidden")
+        this.import_in_elem.setAttribute("type", "file")
+        this.import_in_elem.setAttribute("id", "import_file_in")
+        this.import_in_elem.addEventListener("change", ()=>{ this.import() })
+        import_btn.setAttribute("for", "import_file_in")
+
+        add_push_btn(this.elem, "סיכום", ()=>{ this.show_psummary() }, "sidebar_btn_short")
     }
 
     show_tags_dlg() {
@@ -199,6 +251,48 @@ class Database extends Obj
         })
         period.side_btn_elems = { selector: ps, label:label }
     }
+
+    export() {
+        const text = JSON.stringify(this.to_json(), null, 2)
+        const url = window.URL.createObjectURL(new Blob([text], {type: "application/json"}))
+        this.export_a_elem.setAttribute("href", url)
+        this.export_a_elem.setAttribute("download", "budget_" + time_filename() + ".json")
+        this.export_a_elem.click()
+        window.URL.revokeObjectURL(url)
+    }
+    import() {
+        if (this.import_in_elem.files.length == 0)
+            return
+        const file = this.import_in_elem.files[0]
+        this.import_in_elem.value = ""  // reset it so that next time we could upload the same filename again
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const text = e.target.result
+            body.innerText = ""
+            if (!load_db(text)) {
+                console.error("failed loading")
+                return
+            }
+            g_db.show(body)
+        }
+        reader.onerror = function(e) {
+            console.error(e)
+        }
+        reader.readAsText(file);
+    }
+
+    show_psummary() {
+        this.accounts_cont_elem.innerText = ""
+        // recreate it every time from scrach because I don't want to keep
+        // it live up to date
+        const psum = new PeriodsSummary(this)
+        psum.show(this.accounts_cont_elem)
+    }
+}
+
+function time_filename() {
+    const d = new Date();
+    return d.getDate() + "_" + (d.getMonth() + 1) + "_" + d.getFullYear() + "_" + d.getHours() + String(d.getMinutes()).padStart(2,'0') + String(d.getSeconds()).padStart(2, '0')
 }
 
 class Period extends Obj
@@ -212,12 +306,16 @@ class Period extends Obj
         this.elem = null
         this.accounts_elem = null
         this.side_btn_elems = null
-        this.summary_elems = null
+        this.summary = new PeriodSummary(this)
     }
     static from_json(ctx, j) {
         const p  = new Period(ctx, j.name)
         p.accounts = arr_from_json(p, j.accounts, Account)
         return p
+    }
+    from_json_integrate() {
+        for(const a of this.accounts)
+            a.from_json_integrate()
     }
     to_json() {
         return { name: this.name.value, accounts: arr_to_json(this.accounts) }
@@ -230,13 +328,13 @@ class Period extends Obj
         this.elem = add_div(parent, "obj_period")
         const title_elem = add_div(this.elem, "period_title")
         this.name.show(title_elem)
-        const remove_btn = add_div(title_elem, "entry_remove")
+        const remove_btn = add_div(title_elem, ["entry_remove", "modify_visible"])
         remove_btn.addEventListener("click", ()=>{
             message_box(body,"", 'למחוק את תקופה' + ': "' + this.name.value + '"', [
                 {text:"לא"}, {text:"כן", func:()=>{ this.ctx.remove_period(this) }}])
         })
         this.accounts_elem = add_div(this.elem, "period_accounts")
-        this.show_summary(this.accounts_elem)
+        this.summary.show(this.accounts_elem)
         for(const a of this.accounts) {
             a.show(this.accounts_elem)
         }
@@ -253,81 +351,99 @@ class Period extends Obj
         this.accounts_elem.removeChild(account.elem)
         save_db()
     }
-
-    show_summary(parent) {
-        const summary_cont = add_div(parent, "obj_account")
-        const title_elem = add_div(summary_cont, "account_title")
-        title_elem.innerText = "סיכום"
-        const columns_cont = add_div(summary_cont, "summary_cont")
-        const col_right = add_div(columns_cont, "sum_col")
-        const col_left = add_div(columns_cont, "tb_col")
-
-        const add_line = (label, cls_suffix="")=>{
-            const line = add_div(col_right, "sum_line")
-            add_div(line, ["sum_label", "sum_lbl_" + cls_suffix]).innerText = label
-            const num = add_div(line, ["number_label", "sum_value", "sum_val_" + cls_suffix])
-            num.innerText = 0
-            num.value = 0
-            return { num:num, add: (v)=>{ 
-                num.value += v
-                num.innerText = roundAmount(num.value)
-            }, reset: ()=>{
-                num.value = 0
-                num.innerText = roundAmount(num.value)
-            }}
+    get_account_by_name(name) {
+        for(const a of this.accounts) {
+            if (name == a.name.value)
+                return a
         }
-        const d = {}
-        d.initial_balance = add_line("ייתרה התחלתית:")
-        d.total = add_line("תזרים:")
-        d.total_plus = add_line("הכנסות:", "tplus")
-        d.total_minus = add_line("הוצאות:", "tminus")
-        d.end_balance = add_line("ייתרה סופית:")
-        d.col_left = col_left
-        d.wrongs = add_div(col_right, ["sum_wrongs", "hidden"])
-        d.wrongs.innerText = "יש שגיאות יתרה";
-        this.summary_elems = d
-
-        this.update_summary()
+        return null
     }
-    update_summary() {
-        const d = this.summary_elems
-        if (d === null)
+}
+
+class PeriodSummaryLine {
+    constructor(parent, label, cls_suffix="") {
+        const line = add_div(parent, "sum_line")
+        add_div(line, ["sum_label", "sum_lbl_" + cls_suffix]).innerText = label
+        this.elem = add_div(line, ["number_label", "sum_value", "sum_val_" + cls_suffix])
+        this.value = 0
+    }
+    add(v) { 
+        this.value += v
+        this.elem.innerText = roundAmount(this.value)
+    }
+    reset() {
+        this.value = 0
+        this.elem.innerText = roundAmount(this.value)
+    }
+}
+
+class PeriodSummary extends Obj {
+    constructor(ctx) {
+        super(ctx)
+        this.col_left = null
+        this.sum_lines = []
+        this.tag_balances = null
+        this.elem = null
+    }
+
+    show(parent) {
+        this.elem = add_div(parent, "obj_account")
+        const title_elem = add_div(this.elem, "account_title")
+        title_elem.innerText = "סיכום"
+        const columns_cont = add_div(this.elem, "summary_cont")
+        const col_right = add_div(columns_cont, "sum_col")
+        this.col_left = add_div(columns_cont, "tb_col")
+
+        this.initial_balance = new PeriodSummaryLine(col_right, "ייתרה התחלתית:")
+        this.total = new PeriodSummaryLine(col_right, "תזרים:")
+        this.total_plus = new PeriodSummaryLine(col_right, "הכנסות:", "tplus")
+        this.total_minus = new PeriodSummaryLine(col_right, "הוצאות:", "tminus")
+        this.end_balance = new PeriodSummaryLine(col_right, "ייתרה סופית:")
+        this.sum_lines = [this.initial_balance, this.total, this.total_plus, this.total_minus, this.end_balance]
+
+        this.wrongs = add_div(col_right, ["sum_wrongs", "hidden"])
+        this.wrongs.innerText = "יש שגיאות יתרה";
+
+        this.update()
+    }
+    update() {
+        if (this.elem === null)
             return
-        for(const n in d)
-            if (d[n].num !== undefined)
-                d[n].reset()
+        for(const ln of this.sum_lines)
+            ln.reset()
         const tb = new TagsBalances()
+        this.tag_balances = tb
         let has_wrong = false
-        for(const ac of this.accounts) {
-            d.initial_balance.add(ac.initial_balance.amount.value)
-            d.end_balance.add(ac.table.last_balances.balance)
-            d.total_plus.add(ac.table.last_balances.plus)
-            d.total_minus.add(ac.table.last_balances.minus)
-            d.total.add(ac.table.last_balances.plus + ac.table.last_balances.minus)
+        for(const ac of this.ctx.accounts) {
+            this.initial_balance.add(ac.initial_balance.amount.value)
+            this.end_balance.add(ac.table.last_balances.balance)
+            this.total_plus.add(ac.table.last_balances.plus)
+            this.total_minus.add(ac.table.last_balances.minus)
+            this.total.add(ac.table.last_balances.plus + ac.table.last_balances.minus)
             ac.table.tags_balance(tb)
             if (ac.table.last_balances.has_wrong_balance)
                 has_wrong = true
         }
-        hide(d.wrongs, !has_wrong)
+        hide(this.wrongs, !has_wrong)
         // per-tag table
         const tb_lst = Object.values(tb.id_to_balance)
-        tb_lst.sort((a, b)=>{ return b.magnitude() - a.magnitude() })
-        d.col_left.innerText = ""
+        tb_lst.sort((a, b)=>{ 
+            if (b.balance > 0 && a.balance < 0)
+                return 1
+            if (a.balance > 0 && b.balance < 0)
+                return -1
+            return b.magnitude() - a.magnitude() 
+        })
+        this.col_left.innerText = ""
         for(const b of tb_lst) {
-            const line = add_div(d.col_left, "tb_line")
-            add_div(d.col_left, "tb_sep")
+            const line = add_div(this.col_left, "tb_line")
+            add_div(this.col_left, "tb_sep")
             const tag_wrap = add_div(line, "tb_tag_wrap")
             const tag_elem = add_div(tag_wrap)
             Tag.emplace(b.tag, tag_elem, true)
             const value1 = add_div(line, ["number_label", "tb_value"])
             set_value_color(value1, b.balance)
             value1.innerText = roundAmount(b.balance)
-
-
-            /*const value2 = add_div(line, ["number_label", "tb_value"])
-            value1.innerText = roundAmount(b.plus)
-            value2.innerText = roundAmount(b.minus)
-            */
         }
     }
 }
@@ -354,6 +470,7 @@ class Balances {
         this.balance = balance
         this.plus = plus
         this.minus = minus
+        // did we encounter an entry with a breakdown that has the inconsistent balance
         this.has_wrong_balance = has_wrong
     }
     clone() {
@@ -383,8 +500,10 @@ class Account extends Obj
         const a = new Account(ctx, j.name)
         a.table = Table.from_json(a, j.table)
         a.initial_balance = BalanceEntry.from_json(a, j.initial_balance)
-        a.trigger_balance()
         return a
+    }
+    from_json_integrate() {
+        this.trigger_balance()
     }
     to_json() {
         return { name:this.name.value, 
@@ -400,7 +519,7 @@ class Account extends Obj
         this.elem = add_div(parent, "obj_account")
         const title_elem = add_div(this.elem, "account_title")
         this.name.show(title_elem)
-        const remove_btn = add_div(title_elem, "entry_remove")
+        const remove_btn = add_div(title_elem, ["entry_remove", "modify_visible"])
         remove_btn.addEventListener("click", ()=>{
             message_box(body,"", 'למחוק את חשבון' + ': "' + this.name.value + '"', [
                 {text:"לא"}, {text:"כן", func:()=>{ this.ctx.remove_account(this) }}])
@@ -410,8 +529,11 @@ class Account extends Obj
         this.table.show(table_wrap)
     }
     trigger_balance() {
-        this.table.update_balance(new Balances(this.initial_balance.amount.value, 0, 0))
-        this.ctx.update_summary()
+        const b = new Balances(0, 0, 0)
+        this.initial_balance.update_balance(b)
+        this.table.update_balance(b)
+
+        this.ctx.summary.update()
     }
 } 
 
@@ -421,6 +543,7 @@ class Table extends Obj
         super(ctx)
         this.entries = []
         this.is_top_level = (this.ctx.constructor == Account)
+        // last instance that calculated the balance of this table
         this.last_balances = new Balances(0, 0, 0)
         this.elem = null
         this.footer_elems = null
@@ -546,11 +669,34 @@ class Table extends Obj
         removeElem(entry.elem)
         save_db()
         this.entry_count_changed()
+        this.trigger_balance()
     }
     entry_count_changed() {
         if (this.ctx.constructor === Entry)
             this.ctx.update_has_breakdown()
     }
+    move_entry_up(entry) {
+        const idx = this.entries.indexOf(entry)
+        console.assert(idx != -1)
+        if (idx == 0)
+            return // can't move up
+        this.entries.splice(idx, 1)
+        this.entries.splice(idx - 1, 0, entry)
+        entry.elem.parentNode.insertBefore(entry.elem, entry.elem.previousSibling)
+        save_db()
+        this.trigger_balance()
+    }
+    move_entry_down(entry) {
+        const idx = this.entries.indexOf(entry)
+        if (idx == this.entries.length - 1)
+            return // can't move down
+        this.entries.splice(idx, 1)
+        this.entries.splice(idx + 1, 0, entry)
+        entry.elem.parentNode.insertBefore(entry.elem, entry.elem.nextSibling.nextSibling)
+        save_db()
+        this.trigger_balance()
+    }
+
     update_footer() {
         if (!this.footer_elems)
             return
@@ -584,7 +730,7 @@ class Table extends Obj
             v = this.last_balances.balance - this.ctx.amount.value
         else 
             v = this.last_balances.balance + this.ctx.amount.value
-        return (Math.abs(v) < 0.0099) ? 0 : v
+        return almost_zero(v) ? 0 : v
     }
     trigger_balance() {
         this.ctx.trigger_balance()
@@ -623,6 +769,7 @@ class BalanceEntry extends Obj
         super(ctx)
         this.amount = new EntryNumValue(this, "init_balance", amount_v)
         this.amount.change_cb = ()=>{ this.trigger_balance() }
+        this.last_init_warn = false
         this.elem = null
     }
     static from_json(ctx, j_v) {
@@ -641,10 +788,40 @@ class BalanceEntry extends Obj
         this.elem = add_div(parent, "obj_balance_entry")
         const spacer = add_div(this.elem, "balance_ent_spacer")
         spacer.innerText = "התחלתית:"
+        this.init_warn_elem = add_div(this.elem, ["init_warn", "hidden"])
+        this.init_warn_elem.innerText = "שונה מסופית של התקופה הקודמת"
+        this.show_init_warn()
         this.amount.show(this.elem)
+    }
+    show_init_warn() {
+        if (this.init_warn_elem)
+            hide(this.init_warn_elem, !this.last_init_warn)
     }
     trigger_balance() {
         this.ctx.trigger_balance()
+    }
+    update_balance(b) {
+        b.balance = this.amount.value
+        this.last_init_warn = this.check_init_warn()
+        this.show_init_warn()
+        if (this.last_init_warn)
+            b.has_wrong_balance = true
+    }
+    check_init_warn() {
+        // this->account->period->db
+        const my_account = this.ctx
+        const my_period = my_account.ctx
+        const prev_period = my_period.ctx.get_prev_period(my_period)
+        if (!prev_period === null)
+            return false
+        const same_account = prev_period.get_account_by_name(my_account.name.value)
+        if (same_account === null)
+            return false // didn't find account of the same name
+        const prev_end_balance = same_account.table.last_balances.balance
+        const diff = prev_end_balance - this.amount.value
+        if (almost_zero(diff))
+            return false
+        return true
     }
 }
 
@@ -732,10 +909,17 @@ class Entry extends Obj
             this.balance_elem = add_div(line_elem, ["obj_val_value", "entry_balance", "number_label"])
             this.balance_elem.innerText = roundAmount(this.balance)
         }
-        const remove_btn = add_div(line_elem, "entry_remove")
+        const move_up_btn = add_div(line_elem, ["entry_move_up", "modify_visible"])
+        move_up_btn.addEventListener("click", ()=>{ this.ctx.move_entry_up(this) })
+        const move_down_btn = add_div(line_elem, ["entry_move_down", "modify_visible"])
+        move_down_btn.addEventListener("click", ()=>{ this.ctx.move_entry_down(this) })
+
+        const remove_btn = add_div(line_elem, ["entry_remove", "modify_visible"])
         remove_btn.addEventListener("click", ()=>{
-            this.ctx.remove_entry(this)
-            this.trigger_balance()
+            message_box(body, "", "למחוק את השורה?", [
+                {text:"לא"}, {text:"כן", func:()=>{ 
+                    this.ctx.remove_entry(this)
+                }}])
         })
     }
     show_expanded_breakdown() {
@@ -856,7 +1040,7 @@ class EntryNumValue extends EntryTextValue {
         if (v.length == 0)
             this.value = 0
         else
-            this.value = parseFloat(v)
+            this.value = parseEditFloat(v)
     }
     to_string() {
         return roundAmount(this.value)
@@ -890,7 +1074,7 @@ class EntryDateValue extends EntryTextValue {
     }
     to_string() {
         if (this.value === null)
-            return "[null]"
+            return "<ריק>"
         return "" + this.value.getDate() + "/" + (this.value.getMonth() + 1) + "/" + this.value.getFullYear()
     }
 }
@@ -1113,7 +1297,7 @@ class Tag extends Obj
             this.update_css()
             save_db()
         }, {}, this.color)
-        const remove_btn = add_div(line, "entry_remove")
+        const remove_btn = add_div(line, ["entry_remove", "modify_visible"])
         remove_btn.addEventListener("click", ()=>{ 
             message_box(body,"", 'למחוק את טאג' + ': "' + this.value.value + '"', [
                 {text:"לא"}, {text:"כן", func:()=>{ this.ctx.remove_tag(this) }}])
@@ -1531,11 +1715,10 @@ class XlsxParser extends ParserBase
 const g_parser_clss = [ParserLeumiHtml, ParserMaxSheet, XlsxParser]
 
 
-
 function page_onload()
 {
-    g_db = new Database(null)
-    load_db()
-
+    if (!load_db())
+        g_db = new Database(null)
+    
     g_db.show(body)
 }

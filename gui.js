@@ -38,7 +38,8 @@ function add_push_btn(parent, label, onclick, cls=null) {
     }
     let btn = add_div(parent, cls)
     btn.innerText = label
-    btn.addEventListener("click", onclick)
+    if (onclick !== null)
+        btn.addEventListener("click", onclick)
     return btn
 }
 
