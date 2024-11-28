@@ -1,17 +1,17 @@
 
+- multi-period summary
+- gray out tag for broken down ones
 
-
-- change order of accounts, tags
 - pie chart for expense
 
 - button to unexpand everything, remember state
+- change order of accounts, tags
 
-- multi-period summary
 
 - drag border between fields in entry
 - find by tag? Ctrl+F
 
- - gray out tag for broken down ones
+
 
 
 

@@ -17,6 +17,7 @@ body {
 
 .periods_standin { /* added to the flex since the period_cont is fixed */
     flex-basis: 160px;
+    flex-shrink: 0;
 }
 
 .period_cont {
@@ -38,6 +39,7 @@ body {
 .accounts_cont {
     flex-grow: 1;
     margin-bottom: 10px;
+    max-width: calc(100% - 160px); /* for the standin */
 }
 
 
@@ -458,6 +460,51 @@ body {
     height: 100px;
 }
 
+.obj_glob_sum {
+    display: flex;
+    margin: 20px;
+}
+
+.gsum_ctrls {
+    flex-basis: 140px;
+    flex-shrink: 0;
+}
+.gsum_table {
+    flex-grow: 1;
+    margin-right: 40px;
+    display: flex;
+    gap: 10px;
+    max-width: calc(100% - 180px); /* for the ctrls */
+}
+.gsum_pr_lbl {
+    line-height: 1.4;
+    display: grid;
+    grid-template-columns: 24px auto;
+    gap: 2px;
+    margin: 4px 0 1px 0;
+}
+.gsum_cell_tag, .gsum_cell_pr {
+    height: 22px;
+    padding-top: 2px;
+}
+.gsum_hdr_pr {
+    height: 22px;
+}
+.gsum_pr_col {
+    flex-basis: 140px;
+    flex-shrink: 0;
+}
+.gsum_pr_chkbox {
+    margin: 4px 0 1px 0;
+}
+.gsum_tags_cols {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+}
+.gsum_table_col {
+
+}
 
 /* ----------------------------- GUI --------------------------*/
 
