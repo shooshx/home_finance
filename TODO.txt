@@ -11,7 +11,8 @@
 - drag border between fields in entry
 - find by tag? Ctrl+F
 
-
+- editing  account title should trigger balance check
+    - balance check should say how much is needed
 
 
 

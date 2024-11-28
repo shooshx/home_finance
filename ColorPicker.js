@@ -621,6 +621,10 @@ function create_at(elem, add_func, sz, visible, onchange, options, start_color)
             set_color(presets[xi], true)
         }
     })
+
+    options.myAddEventListener(canvas, "click", function(e) {
+        e.stopPropagation()
+    })
     
     let set_visible = function(v) {
         canvas.style.display = v ? 'initial':'none'
@@ -652,8 +656,10 @@ function create_at(edit_elem, sz, onchange, options, start_value)
     let picker = ColorPicker.create_after(edit_elem, sz, false, function(c, trigger_level2=true) { 
         if (document.activeElement != edit_elem)
             edit_elem.value = c.hex  // change the text only if we're not editing
-        edit_elem.style.backgroundColor = c.hex_no_alpha
-        edit_elem.style.color = c.is_dark ? "#fff" : "#000"
+        if (options.is_edit) {
+            edit_elem.style.backgroundColor = c.hex_no_alpha
+            edit_elem.style.color = c.is_dark ? "#fff" : "#000"
+        }
         if (onchange && trigger_level2)
             onchange(c)
     }, options, start_value)
@@ -682,39 +688,50 @@ function create_at(edit_elem, sz, onchange, options, start_value)
         // the edit box update always need to be updated, and the boolean actuall says if the outside onchange is triggered
     }
     
-    options.myAddEventListener(edit_elem, "input", function() {
-        picker.set_color(edit_elem.value, true)
-    })
-    
-    options.myAddEventListener(edit_elem, "focus", function() { 
-        position_to_edit_elem(); 
-        picker.set_visible(true) 
-        if (options.focus_func)
-            options.focus_func(true)
-    })
-    if (!DEBUG_NO_BLUR) {
-        options.myAddEventListener(edit_elem, "blur", function(e) { 
-            if (e.relatedTarget !== picker.elem) { // if focus moved from the edit to something not the canvas, hide it
-                picker.set_visible(false) 
-                if (options.focus_func)
-                    options.focus_func(false)
-            }
+    if (options.is_edit) {
+        options.myAddEventListener(edit_elem, "input", function() {
+            picker.set_color(edit_elem.value, true)
+        })
+        
+        options.myAddEventListener(edit_elem, "focus", function() { 
+            position_to_edit_elem(); 
+            picker.set_visible(true) 
+            if (options.focus_func)
+                options.focus_func(true)
+        })
+        if (!DEBUG_NO_BLUR) {
+            options.myAddEventListener(edit_elem, "blur", function(e) { 
+                if (e.relatedTarget !== picker.elem) { // if focus moved from the edit to something not the canvas, hide it
+                    picker.set_visible(false) 
+                    if (options.focus_func)
+                        options.focus_func(false)
+                }
+            })
+        }
+        
+        options.myAddEventListener(picker.elem, "focus", function() { 
+            //console.log("canvas-focus") 
+        })
+        if (!DEBUG_NO_BLUR) {
+            options.myAddEventListener(picker.elem, "blur", function(e) { 
+                if (e.relatedTarget !== edit_elem) {
+                    picker.set_visible(false) 
+                    if (options.focus_func)
+                        options.focus_func(false)                
+                }
+            })
+        }
+    }
+    else {
+        options.myAddEventListener(edit_elem, "click", function(e) {
+            position_to_edit_elem()
+            picker.set_visible(true) 
+            e.stopPropagation()
+        })
+        options.myAddEventListener(document, "click", function() {
+            picker.set_visible(false) 
         })
     }
-    
-    options.myAddEventListener(picker.elem, "focus", function() { 
-        //console.log("canvas-focus") 
-    })
-    if (!DEBUG_NO_BLUR) {
-        options.myAddEventListener(picker.elem, "blur", function(e) { 
-            if (e.relatedTarget !== edit_elem) {
-                picker.set_visible(false) 
-                if (options.focus_func)
-                    options.focus_func(false)                
-            }
-        })
-    }
-    
     return picker
 }
 

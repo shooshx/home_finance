@@ -171,6 +171,7 @@ class Database extends Obj
 
     remove_period(period) {
         const idx = this.periods.indexOf(period)
+        console.assert(idx != -1)
         this.periods.splice(idx, 1)
         removeElem(period.side_btn_elems.selector)
         this.accounts_cont_elem.innerText = ""
@@ -234,7 +235,7 @@ class Database extends Obj
     }
 
     show_tags_dlg() {
-        const rect = {visible:false, left:990}
+        const rect = {visible:false, left:790}
         const dlg = create_dialog(body, "טגיות", false, rect, null)
         dlg.elem.style.backgroundColor = "#ffffff"
         this.tags.show(dlg.client)
@@ -359,6 +360,7 @@ class Period extends Obj
     }
     remove_account(account) {
         const idx = this.accounts.indexOf(account)
+        console.assert(idx != -1)
         this.accounts.splice(idx, 1)
         this.accounts_elem.removeChild(account.elem)
         save_db()
@@ -646,7 +648,7 @@ class Table extends Obj
             const total_minus = add_div(footer, ["obj_val_value", "table_total", "table_tminus", "number_label", "hidden"])
             const total = add_div(footer, ["obj_val_value", "table_total", "number_label"])
             add_div(footer, "table_footer_spacer_2")
-            const balance = add_div(footer, ["obj_val_value", "table_footer_balance", "number_label"])
+            const balance = add_div(footer, ["obj_val_value", "table_footer_balance", "number_label", "selectable"])
             this.footer_elems = { total_plus:total_plus, total_minus:total_minus, total:total, balance:balance }
             const hide_plus_minus = (v)=>{
                 hide(total_plus, v)
@@ -705,6 +707,7 @@ class Table extends Obj
     }
     remove_entry(entry) {
         const idx = this.entries.indexOf(entry)
+        console.assert(idx != -1)
         this.entries.splice(idx, 1)
         removeElem(entry.elem)
         save_db()
@@ -728,6 +731,7 @@ class Table extends Obj
     }
     move_entry_down(entry) {
         const idx = this.entries.indexOf(entry)
+        console.assert(idx != -1)
         if (idx == this.entries.length - 1)
             return // can't move down
         this.entries.splice(idx, 1)
@@ -882,7 +886,7 @@ class Entry extends Obj
         this.category = null
         this.bank_desc = new EntryBidiTextValue(this, "bank_desc", bank_desc_v)
         this.note = new EntryTextValue(this, "note", note_v)
-        this.tag = new EntryTagValue(this, tag_id_v)
+        this.tag = new EntryTagValue(this, tag_id_v, TagsEditor.SET_TAGS)
         this.tag.change_cb = ()=>{ this.trigger_balance() }
         this.breakdown = null // optional Table
         this.balance = balance // balance after this transaction
@@ -1085,13 +1089,20 @@ class EntryNumValue extends EntryTextValue {
     to_string() {
         return roundAmount(this.value)
     }
-    show(parent) {
-        super.show(parent)
-        this.value_elem.classList.add("number_label")
+    set_value_elem(v) {
+        this.value_elem.innerText = v
+        this.color_value()
+    }
+    color_value() {
         if (this.color_by_value) {
             const sign = this.ctx.ctx.get_relative_sign()
             set_value_color(this.value_elem, this.value * sign)
         }
+    }
+    show(parent) {
+        super.show(parent)
+        this.value_elem.classList.add("number_label")
+        this.color_value()
         this.input_elem.classList.add("number_edit")
     }
 }
@@ -1136,9 +1147,10 @@ class TagTextValue extends EntryTextValue {
 }
 
 class EntryTagValue extends Obj {
-    constructor(ctx, tag_id) {
+    constructor(ctx, tag_id, which_tag_set) {
         super(ctx)
         this.set_tag(g_db.tags.get_by_id(tag_id))
+        this.which_tag_set = which_tag_set
         this.elem = null
     }
     set_tag(tag) {
@@ -1156,13 +1168,13 @@ class EntryTagValue extends Obj {
 
         this.elem.addEventListener("click", (ev)=>{
             ev.stopPropagation() // prevent the document handler from dismissing the menu
-            g_db.tags.tags_menu(this.elem, (tag)=>{
+            g_db.tags.show_menu(this.elem, (tag)=>{
                 this.set_tag(tag)
                 Tag.emplace(tag, this.elem)
                 if (this.change_cb)
                     this.change_cb(this.value)
                 save_db()
-            })
+            }, this.which_tag_set)
         })
 
     }
@@ -1173,18 +1185,28 @@ class TagsEditor extends Obj
     constructor(ctx) {
         super(ctx)
         this.tags = []
+        this.categories = [] // meta-tags that aggregate tags
         this.id_gen = 1
         this.elem = null
         this.tag_by_id = {}
         this.tags_menu_elem = null
+        this.categories_menu_elem = null
     }
     static from_json(ctx, j) {
         const t = new TagsEditor(ctx)
+        ctx.tags = t // needed because categories tag lookup uses g_db.tags
         if (!j || !j.tags)
             return t
-        t.tags = arr_from_json(t, j.tags, Tag)
-
         let max_id = 1
+
+        // load categories first since Tag construction may referencing them
+        t.categories = arr_from_json(t, j.categories, Category)
+        for(const tg of t.categories) {
+            max_id = Math.max(max_id, tg.id)
+            t.reg_id(tg)
+        }
+
+        t.tags = arr_from_json(t, j.tags, Tag)
         for(const tg of t.tags) {
             max_id = Math.max(max_id, tg.id)
             t.reg_id(tg)
@@ -1198,7 +1220,7 @@ class TagsEditor extends Obj
         this.tag_by_id[t.id] = t
     }
     to_json() {
-        return { tags: arr_to_json(this.tags) }
+        return { tags: arr_to_json(this.tags), categories: arr_to_json(this.categories) }
     }
     get_by_id(id) {
         const t = this.tag_by_id[id]
@@ -1206,59 +1228,105 @@ class TagsEditor extends Obj
             return null
         return t
     }
-    remove_tag(tag) {
-        const idx = this.tags.indexOf(tag)
-        this.tags.splice(idx, 1)
+    remove_tag(tag, which_tag_set) {
+        const tag_set = this.get_set(which_tag_set)
+        const idx = tag_set.indexOf(tag)
+        console.assert(idx != -1)
+        tag_set.splice(idx, 1)
         removeElem(tag.elem)
+        this.invalidate_menu(which_tag_set)
         save_db()
-        this.create_tags_menu()
     }
     show(parent) {
         if (this.elem !== null) {
             parent.appendChild(this.elem)
             return
         }
-        this.elem = add_div(parent, ["obj_tags"])
-        const tags_elem = add_div(this.elem, "tags_cont")
+        this.elem = add_div(parent, "obj_tags")
+        const tags_col = add_div(this.elem, "tags_col")
+        const tags_elem = add_div(tags_col, "tags_cont")
         for(const t of this.tags)
             t.show(tags_elem)
-        add_push_btn(this.elem, "הוסף טאג", ()=>{
-            const t = new Tag(this, "אין ערך", "#aaaaaa", this.id_gen, null)
+        add_push_btn(tags_col, "הוסף טאג", ()=>{
+            const t = new Tag(this, "אין ערך", "#aaaaaa", this.id_gen, [], -1)
             this.id_gen += 1
             this.tags.push(t)
             this.reg_id(t)
-            save_db()
             t.show(tags_elem)
-            this.create_tags_menu()
+            this.invalidate_menu(TagsEditor.SET_TAGS)
+            save_db()
+        })
+        const categories_col = add_div(this.elem, "categories_col")
+        const categories_elem = add_div(categories_col, "categories_cont")
+        for(const t of this.categories)
+            t.show(categories_elem)
+        add_push_btn(categories_col, "הוסף קטגוריה", ()=>{
+            const t = new Category(this, "אין ערך", "#aaaaaa", this.id_gen)
+            this.id_gen += 1
+            this.categories.push(t)
+            this.reg_id(t)
+            t.show(categories_elem)
+            this.invalidate_menu(TagsEditor.SET_CATEGORIES)
+            save_db()
         })
     }
-    create_tags_menu() {
-        this.tags_menu_elem = add_div(body, ["tags_menu", "hidden"])
-        const none_lbl = add_div(this.tags_menu_elem, ["obj_val_val_tag", "tag_menu_label"])
+    create_tags_menu(t_lst) {
+        const menu_elem = add_div(body, ["tags_menu", "hidden"])
+        const none_lbl = add_div(menu_elem, ["obj_val_val_tag", "tag_menu_label"])
         Tag.emplace(null, none_lbl, true)
-        none_lbl.addEventListener("click", ()=>{ this.tags_menu_elem.select_cb(null) })
-        for(const t of this.tags) {
-            const lbl = add_div(this.tags_menu_elem, ["obj_val_val_tag", "tag_menu_label"])
+        none_lbl.addEventListener("click", ()=>{ menu_elem.select_cb(null) })
+        for(const t of t_lst) {
+            const lbl = add_div(menu_elem, ["obj_val_val_tag", "tag_menu_label"])
             Tag.emplace(t, lbl)
-            lbl.addEventListener("click", (ev)=>{ this.tags_menu_elem.select_cb(t) })
+            lbl.addEventListener("click", (ev)=>{ menu_elem.select_cb(t) })
         }
         document.addEventListener("click", ()=>{
-            hide(this.tags_menu_elem, true)
+            hide(menu_elem, true)
         })
+        return menu_elem
     }
-    tags_menu(parent, select_cb) {
-        if (this.tags_menu_elem === null)
-            this.create_tags_menu()
-        hide(this.tags_menu_elem, false)
-        const rect = parent.getBoundingClientRect()
-        this.tags_menu_elem.style.top = rect.top + window.scrollY + "px"
-        this.tags_menu_elem.style.left = rect.left + "px"
-        this.tags_menu_elem.select_cb = (tag)=>{
+    menu(for_elem, select_cb, t_lst, menu_elem) {
+        if (menu_elem === null)
+            menu_elem = this.create_tags_menu(t_lst)
+        hide(menu_elem, false)
+        const rect = for_elem.getBoundingClientRect()
+        menu_elem.style.top = rect.top + window.scrollY + "px"
+        menu_elem.style.left = rect.left + "px"
+        menu_elem.select_cb = (tag)=>{
             select_cb(tag)
-            this.tags_menu_elem.select_cb = null
-            hide(this.tags_menu_elem, true)
+            menu_elem.select_cb = null
+            hide(menu_elem, true)
         }
+        return menu_elem
     }
+
+    static SET_TAGS = 1
+    static SET_CATEGORIES = 2
+    get_set(which_tag_set) {
+        if (which_tag_set == TagsEditor.SET_TAGS)
+            return this.tags
+        else if (which_tag_set == TagsEditor.SET_CATEGORIES)
+            return this.categories
+        else
+            console.error("unknown tag-set")
+    }
+    invalidate_menu(which_tag_set) {
+        if (which_tag_set == TagsEditor.SET_TAGS)
+            this.tags_menu_elem = null
+        else if (which_tag_set == TagsEditor.SET_CATEGORIES)
+            this.categories_menu_elem = null
+        else
+            console.error("unknown tag-set")
+    }
+    show_menu(for_elem, select_cb, which_tag_set) {
+        if (which_tag_set == TagsEditor.SET_TAGS)
+            this.tags_menu_elem = this.menu(for_elem, select_cb, this.tags, this.tags_menu_elem)
+        else if (which_tag_set == TagsEditor.SET_CATEGORIES)
+            this.categories_menu_elem = this.menu(for_elem, select_cb, this.categories, this.categories_menu_elem)
+        else
+            console.error("unknown tag-set")
+    }
+
 }
 
 function get_text_color(is_dark) {
@@ -1267,7 +1335,7 @@ function get_text_color(is_dark) {
 
 class Tag extends Obj
 {
-    constructor(ctx, value, color, id, strs) {
+    constructor(ctx, value, color, id, strs, category_id) {
         super(ctx)
         this.value = new TagTextValue(this, "tag", value)
         this.value.change_cb = ()=>{ this.update_css() }
@@ -1275,9 +1343,9 @@ class Tag extends Obj
         this.id = id
         // strs make automatic tagging when adding a statement
         this.strs = strs
-        if (!this.strs)
-            this.strs = []
         this.text_color = get_text_color(ColorPicker.parse_hex(this.color).is_dark)
+        this.category = (category_id !== null) ? new EntryTagValue(this, category_id, TagsEditor.SET_CATEGORIES) : null
+
         this.elem = null
         this.strs_elem = null
     
@@ -1288,10 +1356,11 @@ class Tag extends Obj
         this.update_css()
     }
     static from_json(ctx, j) {
-        return new Tag(ctx, j.value, j.color, j.id, j.strs)
+        return new Tag(ctx, j.value, j.color, j.id, j.strs, j.category_id)
     }
     to_json() {
-        return { value: this.value.value, color: this.color, id: this.id, strs: this.strs }
+        return { value: this.value.value, color: this.color, id: this.id, 
+                 strs: this.strs, category_id: Tag.get_id(this.category.tag) }
     }
     static emplace(tag, e, mark_none=false) {
         e.classList.add("tag")
@@ -1312,7 +1381,10 @@ class Tag extends Obj
     }
 
     static get_id(tag) {
-        return (tag !== null) ? tag.id : -1 
+        return (tag !== null && tag !== undefined) ? tag.id : -1 
+    }
+    my_tag_set() {
+        return TagsEditor.SET_TAGS
     }
 
     update_css() {
@@ -1327,34 +1399,62 @@ class Tag extends Obj
         }
         this.elem = add_div(parent, "obj_tag")
         const line = add_div(this.elem, "tag_line", "tag")
-        this.expand_btn = add_div(line, "entry_expand")
-        this.value.show(line)
+        if (this.strs !== null)
+            this.expand_btn = add_div(line, "entry_expand")
+        const tag_and_color = add_div(line, "tag_and_color")
+        this.value.show(tag_and_color)
         Tag.emplace(this, this.value.value_elem)
-        const color_edit = add_elem(line, "input", "tag_color")
+        const color_edit = add_elem(tag_and_color, "div", "tag_color")
         ColorEditBox.create_at(color_edit, 150, (c)=>{
             this.color = c.hex
             this.text_color = get_text_color(c.is_dark)
             this.update_css()
             save_db()
-        }, {}, this.color)
+        }, { is_edit: false }, this.color)
+        
+        if (this.category !== null) {
+            this.category.show(line)
+            this.category.elem.classList.add("category_select")
+        }
+
         const remove_btn = add_div(line, ["entry_remove", "modify_visible"])
         remove_btn.addEventListener("click", ()=>{ 
             message_box(body,"", 'למחוק את טאג' + ': "' + this.value.value + '"', [
-                {text:"לא"}, {text:"כן", func:()=>{ this.ctx.remove_tag(this) }}])
+                {text:"לא"}, {text:"כן", func:()=>{ this.ctx.remove_tag(this, this.my_tag_set()) }}])
         })
-        this.strs_elem = add_div(this.elem, ["tag_strs", "hidden"])
-        const strs_edit = add_elem(this.strs_elem, "textarea", "tag_strs_inp")
-        strs_edit.value = this.strs.join("\n")
-        wire_expand_btn(this.expand_btn, this.strs_elem)
-        strs_edit.addEventListener("input", ()=>{
-            const strs = strs_edit.value.split("\n")
-            this.strs = []
-            for(const s of strs) {
-                this.strs.push(s.trim())
-            }
-            save_db()
-        })
+        if (this.strs) {
+            this.strs_elem = add_div(this.elem, ["tag_strs", "hidden"])
+            const strs_edit = add_elem(this.strs_elem, "textarea", "tag_strs_inp")
+            strs_edit.value = this.strs.join("\n")
+            wire_expand_btn(this.expand_btn, this.strs_elem)
+            strs_edit.addEventListener("input", ()=>{
+                const strs = strs_edit.value.split("\n")
+                this.strs = []
+                for(const s of strs) {
+                    this.strs.push(s.trim())
+                }
+                save_db()
+            })
+        }
     }
+}
+
+class Category extends Tag 
+{
+    constructor(ctx, value, color, id) {
+        // category doesn't have itself a category and doesn't have strs
+        super(ctx, value, color, id, null, null)
+    }
+    static from_json(ctx, j) {
+        return new Category(ctx, j.value, j.color, j.id)
+    }
+    to_json() {
+        return { value: this.value.value, color: this.color, id: this.id }
+    }
+    my_tag_set() {
+        return TagsEditor.SET_CATEGORIES
+    }
+
 }
 
 class GlobalSummary extends Obj
