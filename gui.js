@@ -43,6 +43,19 @@ function add_push_btn(parent, label, onclick, cls=null) {
     return btn
 }
 
+function add_checkbox(parent, label, init_v, onchange, cls=null) {
+    const lbl = add_elem(parent, "label", "param_checkbox_lbl")
+    lbl.innerText = label
+    if (cls !== null)
+        lbl.classList.add(cls)
+    const check_box = create_elem("input", "param_checkbox_inp")
+    check_box.setAttribute("type", "checkbox")
+    check_box.checked = init_v
+    lbl.insertBefore(check_box, lbl.firstChild)
+    check_box.addEventListener("change", (v)=>{ onchange(check_box.checked) })
+    return {label: lbl, inp: check_box}
+}
+
 
 function create_dialog(parent, title, resizable, rect, visible_changed, size_changed=null)
 {

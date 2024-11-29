@@ -1,5 +1,6 @@
 
 - multi-period summary
+    total sum
 - gray out tag for broken down ones
 
 - pie chart for expense

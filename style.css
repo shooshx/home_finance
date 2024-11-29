@@ -418,6 +418,17 @@ body {
     flex-grow: 1;
     font-size: 19px;
 }
+.sum_title {
+    display: flex;
+}
+.sum_title_text {
+    flex-grow: 1;
+}
+.sum_use_cat {
+    flex-basis: 120px;
+    flex-shrink: 0;
+    height: 24px;
+}
 .tb_col {
     flex-basis: 400px;
 }
@@ -488,40 +499,64 @@ body {
     flex-shrink: 0;
 }
 .gsum_table {
+    position: relative;
     flex-grow: 1;
     margin-right: 40px;
     display: flex;
-    gap: 10px;
+    height: fit-content;
     max-width: calc(100% - 180px); /* for the ctrls */
-}
-.gsum_pr_lbl {
-    line-height: 1.4;
-    display: grid;
-    grid-template-columns: 24px auto;
-    gap: 2px;
-    margin: 4px 0 1px 0;
 }
 .gsum_cell_tag, .gsum_cell_pr {
     height: 22px;
     padding-top: 2px;
 }
+.gsum_cell_pr {
+    font-size: 17px;
+}
 .gsum_hdr_pr {
     height: 22px;
+    font-weight: bold;
+    font-size: 17px;
+    margin-bottom: 1px;
 }
 .gsum_pr_col {
     flex-basis: 140px;
     flex-shrink: 0;
 }
-.gsum_pr_chkbox {
-    margin: 4px 0 1px 0;
+.gsum_hdr_tag {
+    margin-bottom: 3px;
 }
 .gsum_tags_cols {
     display: flex;
-    gap: 10px;
     overflow-x: auto;
 }
 .gsum_table_col {
-
+    border-left: 1px dashed #999999;
+    margin-right: 5px;
+    padding-left: 5px;
+}
+.gsum_ctrl_divider {
+    border-top: 2px solid #333;
+    margin: 10px 0 10px 0
+}
+.gsum_cell_total {
+    margin-top: 10px;
+}
+.gsum_horz_lines_cont {
+    position: absolute;
+    width: 100%;
+    margin-top: 24px;
+}
+.gsum_horz_line {
+    width: 100%;
+    height: 23px;
+    border-top: 1px dashed #999898;
+}
+.gsum_horz_total {
+    width: 100%;
+    height: 23px;
+    border-top: 2px dashed #999898;
+    margin-top: 4px;
 }
 
 /* ----------------------------- GUI --------------------------*/
@@ -715,6 +750,17 @@ body {
     width: 600px;
     height: 600px;
 }
+.param_checkbox_lbl {
+    line-height: 1.4;
+    display: grid;
+    grid-template-columns: 24px auto;
+    gap: 2px;
+    margin: 4px 0 1px 0;
+}
+.param_checkbox_inp {
+    margin: 4px 0 1px 0;
+}
+/*-----------------------------------------*/
 
 .hidden {
     display: none;

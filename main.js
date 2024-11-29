@@ -128,6 +128,7 @@ class Database extends Obj
         this.periods = []
         this.selected_period_idx = 0
         this.tags = new TagsEditor(this)
+        this.gsum = new GlobalSummary(this)
 
         this.elem = null
         this.accounts_cont_elem = null
@@ -143,6 +144,7 @@ class Database extends Obj
         db.periods = arr_from_json(db, j.periods, Period)
         if (j.selected_period_idx)
             db.selected_period_idx = j.selected_period_idx
+        db.gsum = GlobalSummary.from_json(db, j.gsum)
         return db
     }
     from_json_integrate() {
@@ -152,7 +154,8 @@ class Database extends Obj
     to_json() {
         return { periods: arr_to_json(this.periods), 
                  selected_period_idx: this.selected_period_idx, 
-                 tags: this.tags.to_json() }
+                 tags: this.tags.to_json(),
+                 gsum: this.gsum.to_json() }
     }
 
     selected_period() {
@@ -231,7 +234,7 @@ class Database extends Obj
         this.import_in_elem.addEventListener("change", ()=>{ this.import() })
         import_btn.setAttribute("for", "import_file_in")
 
-        add_push_btn(this.elem, "סיכום", ()=>{ this.show_psummary() }, "sidebar_btn_short")
+        add_push_btn(this.elem, "סיכום", ()=>{ this.show_gsummary() }, "sidebar_btn_short")
     }
 
     show_tags_dlg() {
@@ -282,13 +285,12 @@ class Database extends Obj
         reader.readAsText(file);
     }
 
-    show_psummary() {
+    show_gsummary() {
         this.set_selected(null)
         this.accounts_cont_elem.innerText = ""
         // recreate it every time from scrach because I don't want to keep
         // it live up to date
-        const psum = new GlobalSummary(this)
-        psum.show(this.accounts_cont_elem)
+        this.gsum.show(this.accounts_cont_elem)
     }
 }
 
@@ -316,6 +318,7 @@ class Period extends Obj
     static from_json(ctx, j) {
         const p  = new Period(ctx, j.name)
         p.accounts = arr_from_json(p, j.accounts, Account)
+        p.summary = PeriodSummary.from_json(p, j.summary)
         p.in_gsummary = (j.in_gsum) ? true : false
         return p
     }
@@ -328,6 +331,7 @@ class Period extends Obj
     to_json() {
         return { name: this.name.value, 
                  accounts: arr_to_json(this.accounts), 
+                 summary: this.summary.to_json(),
                  in_gsum: this.in_gsummary }
     }
     get_index() {
@@ -403,6 +407,7 @@ class PeriodSummary extends Obj {
         super(ctx)
         this.col_left = null
         this.tag_balances = null
+        this.categories_balances = null
 
         this.initial_balance = new PeriodSummaryLine("ייתרה התחלתית:")
         this.total = new PeriodSummaryLine("תזרים:")
@@ -411,14 +416,30 @@ class PeriodSummary extends Obj {
         this.end_balance = new PeriodSummaryLine("ייתרה סופית:")
         this.sum_lines = [this.initial_balance, this.total, this.total_plus, this.total_minus, this.end_balance]
         this.wrongs_elem = null
+        this.tag_by_category = false
 
         this.elem = null
+    }
+    static from_json(ctx, j) {
+        const p = new PeriodSummary(ctx)
+        if (j !== undefined)
+            p.tag_by_category = (j.tag_by_category) ? true : false
+        return p
+    }
+    to_json() {
+        return { tag_by_category: this.tag_by_category }
     }
 
     show(parent) {
         this.elem = add_div(parent, "obj_account")
-        const title_elem = add_div(this.elem, "account_title")
-        title_elem.innerText = "סיכום"
+        const title_elem = add_div(this.elem, "sum_title")
+        const title_text = add_div(title_elem, ["account_title", "sum_title_text"])
+        title_text.innerText = "סיכום"
+        add_checkbox(title_elem, "קטגוריות", this.tag_by_category, (v)=>{
+            this.tag_by_category = v
+            this.update()
+            save_db()
+        }, "sum_use_cat")
         const columns_cont = add_div(this.elem, "summary_cont")
         const col_right = add_div(columns_cont, "sum_col")
         this.col_left = add_div(columns_cont, "tb_col")
@@ -434,7 +455,7 @@ class PeriodSummary extends Obj {
     update() {
         for(const ln of this.sum_lines)
             ln.reset()
-        const tb = new TagsBalances()
+        let tb = new TagsBalances()
         this.tag_balances = tb
         let has_wrong = false
         for(const ac of this.ctx.accounts) {
@@ -447,10 +468,13 @@ class PeriodSummary extends Obj {
             if (ac.table.last_balances.has_wrong_balance)
                 has_wrong = true
         }
+        this.categories_balances = tb.to_categories()
         if (this.elem === null)
             return
         hide(this.wrongs_elem, !has_wrong)
         // per-tag table
+        if (this.tag_by_category)
+            tb = this.categories_balances
         const tb_lst = tb.sorted_by_magnitude()
 
         this.col_left.innerText = ""
@@ -472,6 +496,7 @@ class TagsBalances {
         this.id_to_balance = {}
     }
     add_for_tag(tag, v) {
+        console.assert(tag !== undefined)
         const id = Tag.get_id(tag)
         let b = this.id_to_balance[id]
         if (b === undefined)
@@ -497,6 +522,18 @@ class TagsBalances {
             return b.magnitude() - a.magnitude() 
         })
         return tb_lst
+    }
+    to_categories() {
+        const new_tb = new TagsBalances()
+        for(const id in this.id_to_balance) {
+            const b = this.id_to_balance[id]
+            let for_tag = b.tag // tag without category, just copy it
+            // b.tag would be null for "other"
+            if (b.tag !== null && b.tag.category.tag !== null)
+                for_tag = b.tag.category.tag
+            new_tb.add_for_tag(for_tag, b.balance) 
+        }
+        return new_tb
     }
 }
 
@@ -1461,34 +1498,43 @@ class GlobalSummary extends Obj
 {
     constructor(ctx) {
         super(ctx)
+        this.tag_by_category = false
 
         this.elem = null
         this.table_elem = null
     }
     static from_json(ctx, j) {
         const gs = new GlobalSummary(ctx)
+        if (j !== undefined)
+            gs.tag_by_category = (j.tag_by_category) ? true : false
         return gs
     }
     to_json() {
-        return { }
+        return { tag_by_category: this.tag_by_category }
     }
     show(parent) {
+        if (this.elem !== null) {
+            parent.appendChild(this.elem)
+            this.update_table()
+            return
+        }
         this.elem = add_div(parent, "obj_glob_sum")
         const ctrls_cont = add_div(this.elem, "gsum_ctrls")
         this.table_elem = add_div(this.elem, "gsum_table")
         for(const p of this.ctx.periods) {
-            const lbl = add_elem(ctrls_cont, "label", "gsum_pr_lbl")
-            lbl.innerText = p.name.value
-            const check_box = create_elem("input", "gsum_pr_chkbox")
-            check_box.setAttribute("type", "checkbox")
-            check_box.checked = p.in_gsummary
-            lbl.insertBefore(check_box, lbl.firstChild)
-            check_box.addEventListener("change", ()=>{
-                p.in_gsummary = check_box.checked
-                save_db()
+            add_checkbox(ctrls_cont, p.name.value, p.in_gsummary, (v)=>{
+                p.in_gsummary = v
                 this.update_table()
+                save_db()
             })
         }
+        add_div(ctrls_cont, "gsum_ctrl_divider")
+        add_checkbox(ctrls_cont, "קטגוריות", this.tag_by_category, (v)=>{
+            this.tag_by_category = v
+            this.update_table()
+            save_db()
+        })
+
         this.update_table()
     }
     update_table() {
@@ -1497,11 +1543,13 @@ class GlobalSummary extends Obj
         for(const p of this.ctx.periods)
             if (p.in_gsummary)
                 selected_periods.push(p)
-        // aggregate all tags from periods
-        const utsb = new TagsBalances()
+        // aggregate all tags from periods and sum their totals
+        let utsb = new TagsBalances()
         // add all the periods just to be able to sort the tags
         for(const p of selected_periods)
             utsb.union_add(p.summary.tag_balances)
+        if (this.tag_by_category)
+            utsb = utsb.to_categories()
         const sorted_tb_lst = utsb.sorted_by_magnitude() // list of TagBalances
         
         // table is columns first so that entire column would be the same width
@@ -1510,20 +1558,30 @@ class GlobalSummary extends Obj
         for(const p of selected_periods) {
             add_div(pr_col, "gsum_cell_pr").innerText = p.name.value
         }
+        add_div(pr_col, ["gsum_cell_pr", "gsum_cell_total"]).innerText = 'סה"כ:'
         const tags_cols = add_div(this.table_elem, "gsum_tags_cols") // should scroll alone
         // add all the tags balances, per period
         for(const tsb of sorted_tb_lst) {
             const col = add_div(tags_cols, ["gsum_table_col"])
             const tag_hdr = add_div(col, "gsum_hdr_tag")
-            Tag.emplace(tsb.tag, tag_hdr)
+            Tag.emplace(tsb.tag, tag_hdr, true)
             for(const p of selected_periods) {
                 const cell = add_div(col, ["gsum_cell_tag", "number_label"])
-                const ptb = p.summary.tag_balances.id_to_balance[Tag.get_id(tsb.tag)]
+                const from_balances = (this.tag_by_category) ? p.summary.categories_balances : p.summary.tag_balances
+                const ptb = from_balances.id_to_balance[Tag.get_id(tsb.tag)]
                 const v = (ptb !== undefined) ? ptb.balance : 0
                 cell.innerText = roundAmount(v)
                 set_value_color(cell, v)
             }
+            const col_total = add_div(col, ["gsum_cell_tag", "number_label", "gsum_cell_total"])
+            col_total.innerText = roundAmount(tsb.balance)
+            set_value_color(col_total, tsb.balance)
         }
+        const horz_lines = add_div(this.table_elem, "gsum_horz_lines_cont")
+        for(let i = 0; i < selected_periods.length; ++i)
+            add_div(horz_lines, "gsum_horz_line")
+        add_div(horz_lines, "gsum_horz_total")
+        
     }
 }
 
