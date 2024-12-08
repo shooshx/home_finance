@@ -358,8 +358,8 @@ class Period extends Obj
         add_push_btn(this.elem, "הוסף חשבון", ()=>{
             const a = new Account(this, "אין שם")
             this.accounts.push(a)
-            save_db()
             a.show(this.accounts_elem)
+            save_db()
         })
     }
     remove_account(account) {
@@ -642,10 +642,13 @@ class Table extends Obj
     }
     clear() {
         this.entries = []
+        this.last_balances = new Balances(0, 0, 0)
         this.invalidate()
-        save_db()
+        // we're not going to get to update_balance since the table is empty so update the footer here 
+        this.update_footer() 
         this.entry_count_changed()
         this.trigger_balance()
+        save_db()
     }
     show(parent) {
         if (this.elem !== null) {
@@ -738,18 +741,18 @@ class Table extends Obj
         this.entries.push(entry)
         if (this.elem !== null)
             entry.show(this.entries_cont_elem)
+        this.entry_count_changed()
         if (need_save)
             save_db()
-        this.entry_count_changed()
     }
     remove_entry(entry) {
         const idx = this.entries.indexOf(entry)
         console.assert(idx != -1)
         this.entries.splice(idx, 1)
         removeElem(entry.elem)
-        save_db()
         this.entry_count_changed()
         this.trigger_balance()
+        save_db()
     }
     entry_count_changed() {
         if (this.ctx.constructor === Entry)
@@ -763,8 +766,8 @@ class Table extends Obj
         this.entries.splice(idx, 1)
         this.entries.splice(idx - 1, 0, entry)
         entry.elem.parentNode.insertBefore(entry.elem, entry.elem.previousSibling)
-        save_db()
         this.trigger_balance()
+        save_db()
     }
     move_entry_down(entry) {
         const idx = this.entries.indexOf(entry)
@@ -774,8 +777,8 @@ class Table extends Obj
         this.entries.splice(idx, 1)
         this.entries.splice(idx + 1, 0, entry)
         entry.elem.parentNode.insertBefore(entry.elem, entry.elem.nextSibling.nextSibling)
-        save_db()
         this.trigger_balance()
+        save_db()
     }
 
     update_footer() {
@@ -893,7 +896,7 @@ class BalanceEntry extends Obj
         const my_account = this.ctx
         const my_period = my_account.ctx
         const prev_period = my_period.ctx.get_prev_period(my_period)
-        if (!prev_period === null)
+        if (prev_period === null)
             return false
         const same_account = prev_period.get_account_by_name(my_account.name.value)
         if (same_account === null)
@@ -926,8 +929,9 @@ class Entry extends Obj
         this.tag = new EntryTagValue(this, tag_id_v, TagsEditor.SET_TAGS)
         this.tag.change_cb = ()=>{ this.trigger_balance() }
         this.breakdown = null // optional Table
-        this.balance = balance // balance after this transaction
+        this.is_expanded = true
 
+        this.balance = balance // balance after this transaction
         this.fields = [this.date, this.bank_desc, this.amount, this.tag, this.note]
         this.elem = null
         this.balance_elem = null
@@ -941,8 +945,11 @@ class Entry extends Obj
         }
         const date = parseDate(j.date)
         const e = new Entry(ctx, date, j.amount, j.bank_desc, j.note, j.tag_id)
-        if (j.breakdown)
+        if (j.breakdown) {
             e.breakdown = Table.from_json(e, j.breakdown)
+            if (j.ui_expanded !== undefined)
+                e.is_expanded = j.ui_expanded
+        }
         return e
     }
     to_json() {
@@ -950,10 +957,12 @@ class Entry extends Obj
                     amount: this.amount.value, 
                     bank_desc: this.bank_desc.value, 
                     note: this.note.value,
-                    tag_id: this.tag.tag_id
+                    tag_id: this.tag.tag_id,
                   }
-        if (this.breakdown !== null)
+        if (this.breakdown !== null) {
             d.breakdown = this.breakdown.to_json()
+            d.ui_expanded = this.is_expanded
+        }
         return d
     }
     has_breakdown() {
@@ -973,7 +982,7 @@ class Entry extends Obj
             this.expand_btn.addEventListener("click", ()=>{
                 this.show_expanded_breakdown()
             })
-            if (this.has_breakdown()) {
+            if (this.has_breakdown() && this.is_expanded) {
                 this.breakdown.show(this.elem)
                 this.expand_btn.setAttribute("checked", true)
             }
@@ -1008,19 +1017,27 @@ class Entry extends Obj
             this.breakdown = new Table(this)
         }
         if (this.expand_btn.getAttribute("checked") === null) {
+            this.is_expanded = true
             this.breakdown.show(this.elem)
             this.expand_btn.setAttribute("checked", true)
         }
         else {
+            this.is_expanded = false
             this.breakdown.hide()
             this.expand_btn.removeAttribute("checked")
         }
+        save_db()
     }
     update_has_breakdown() {
-        if (this.has_breakdown())
+        if (this.has_breakdown()) {
             this.expand_btn.setAttribute("has_breakdown", true)
-        else
+            // if it has breakdown, it's tag doesn't do anything
+            this.tag.enable(false)
+        }
+        else {
             this.expand_btn.removeAttribute("has_breakdown")
+            this.tag.enable(true)
+        }
     }
 
     update_balance(b) { // update_balance go down the tree
@@ -1189,12 +1206,17 @@ class EntryTagValue extends Obj {
         this.set_tag(g_db.tags.get_by_id(tag_id))
         this.which_tag_set = which_tag_set
         this.elem = null
+        this.enabled = true
     }
     set_tag(tag) {
         this.tag = tag
         this.tag_id = Tag.get_id(tag)
     }
-
+    enable(v) {
+        this.enabled = v
+        if (this.elem)
+            this.elem.classList.toggle("tag_disabled", !v)
+    }
     show(parent) {
         if (this.elem !== null) {
             parent.appendChild(this.elem)
@@ -1202,8 +1224,11 @@ class EntryTagValue extends Obj {
         }
         this.elem = add_div(parent, ["tag_value", "obj_txt_val"])
         Tag.emplace(this.tag, this.elem)
+        this.enable(this.enabled)
 
         this.elem.addEventListener("click", (ev)=>{
+            if (!this.enabled)
+                return
             ev.stopPropagation() // prevent the document handler from dismissing the menu
             g_db.tags.show_menu(this.elem, (tag)=>{
                 this.set_tag(tag)
@@ -1689,6 +1714,8 @@ class TagStrLookup {
         this.by_str = {}
         for(const tag of g_db.tags.tags) {
             for(const s of tag.strs) {
+                if (s.length == 0)
+                    continue
                 if (this.by_str[s] !== undefined) {
                     console.error("same string appears in more than 1 tag: " + s)
                     continue 
@@ -1743,8 +1770,8 @@ class ParserBase {
             const first_entry = entries[0]
             this.table.ctx.initial_balance.amount.load_value(first_entry.balance - first_entry.amount.value)
         }
-        save_db()
         this.table.trigger_balance()
+        save_db()
     }
 
     check_card(card_num) {

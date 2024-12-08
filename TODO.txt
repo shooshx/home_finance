@@ -1,19 +1,19 @@
 
+- editing  account title should trigger balance check
+    - balance check should say how much is needed
+
+
 - multi-period summary
     total sum
-- gray out tag for broken down ones
+
 
 - pie chart for expense
-
-- button to unexpand everything, remember state
 - change order of accounts, tags
-
 
 - drag border between fields in entry
 - find by tag? Ctrl+F
 
-- editing  account title should trigger balance check
-    - balance check should say how much is needed
+
 
 
 

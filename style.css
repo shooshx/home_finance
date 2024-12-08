@@ -489,6 +489,16 @@ body {
     min-width: 290px;
 }
 
+.tag_disabled {
+    /* override dynamic css tag */
+    background-color: #c0c0c0 !important;
+    border: 0;
+}
+.tag_disabled::after {
+    /* override dynamic css tag */
+    content: "" !important;
+}
+
 .obj_glob_sum {
     display: flex;
     margin: 20px;
