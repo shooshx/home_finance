@@ -319,9 +319,10 @@ body {
 .wrong_cont {
     display: flex;
     background-color: #f87272;
-    padding: 0 7px 0 0;
+    padding: 0 7px 0 3px;
     margin-left: 5px;
     border-radius: 7px;
+    margin-bottom: 2px;
 }
 .wrong_label {
     direction: ltr;
@@ -337,10 +338,14 @@ body {
     margin-top: 10px;
 }
 .init_warn {
+    display: flex;
     background-color: #f87272;
     padding: 0 7px;
     border-radius: 5px;
     margin: 0 0 2px 5px;
+}
+.prev_end_balance {
+    padding: 2px 3px 0 0;
 }
 
 .obj_tags {

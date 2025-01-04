@@ -573,6 +573,9 @@ class Account extends Obj
         this.name = new EntryTextValue(this, "acname", name)
         this.table = new Table(this)
         this.initial_balance = new BalanceEntry(this, 0)
+        this.name.change_cb = ()=> {
+            this.initial_balance.check_show_init_warn()
+        }
         this.elem = null
     }
     static from_json(ctx, j) {
@@ -853,7 +856,11 @@ class BalanceEntry extends Obj
         super(ctx)
         this.amount = new EntryNumValue(this, "init_balance", amount_v)
         this.amount.change_cb = ()=>{ this.trigger_balance() }
+        this.prev_end_balance = 0
         this.last_init_warn = false
+
+        this.prev_end_balance_elem = null
+        this.init_warn_elem = null
         this.elem = null
     }
     static from_json(ctx, j_v) {
@@ -873,23 +880,30 @@ class BalanceEntry extends Obj
         const spacer = add_div(this.elem, "balance_ent_spacer")
         spacer.innerText = "התחלתית:"
         this.init_warn_elem = add_div(this.elem, ["init_warn", "hidden"])
-        this.init_warn_elem.innerText = "שונה מסופית של התקופה הקודמת"
+        const lbl = add_div(this.init_warn_elem, "wrong_label")
+        lbl.innerText = ":שונה מסופית של התקופה הקודמת"
+        this.prev_end_balance_elem = add_div(this.init_warn_elem, ["number_label", "selectable", "prev_end_balance"])
         this.show_init_warn()
         this.amount.show(this.elem)
     }
     show_init_warn() {
-        if (this.init_warn_elem)
-            hide(this.init_warn_elem, !this.last_init_warn)
+        if (!this.init_warn_elem)
+            return
+        this.prev_end_balance_elem.innerText = this.prev_end_balance
+        hide(this.init_warn_elem, !this.last_init_warn)
     }
     trigger_balance() {
         this.ctx.trigger_balance()
     }
     update_balance(b) {
         b.balance = this.amount.value
-        this.last_init_warn = this.check_init_warn()
-        this.show_init_warn()
+        this.check_show_init_warn()
         if (this.last_init_warn)
             b.has_wrong_balance = true
+    }
+    check_show_init_warn() {
+        this.last_init_warn = this.check_init_warn()
+        this.show_init_warn()
     }
     check_init_warn() {
         // this->account->period->db
@@ -905,6 +919,7 @@ class BalanceEntry extends Obj
         const diff = prev_end_balance - this.amount.value
         if (almost_zero(diff))
             return false
+        this.prev_end_balance = prev_end_balance
         return true
     }
 }
